@@ -1,0 +1,101 @@
+# Dependencies
+/node_modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+.test.env
+
+# Build outputs
+/dist
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+/coverage
+coverage/
+/.nyc_output
+.nyc_output/
+*.lcov
+
+# IDE and editor files
+/.idea
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Secrets and keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+*.secret
+.werf_secret_key
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# NPM config (may contain tokens)
+.npmrc
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
