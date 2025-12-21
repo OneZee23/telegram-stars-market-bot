@@ -99,3 +99,6 @@ secrets/
 *.pid
 *.seed
 *.pid.lock
+
+# Local documentation (personal guides, not for git)
+local_docs/
