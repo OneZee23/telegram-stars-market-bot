@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "address": "localhost",
+      "localRoot": "${workspaceFolder}",
+      "name": "Debug Nest Application",
+      "port": 9229,
+      "request": "attach",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node"
+    },
+    {
+      "name": "Run Nest Application",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/dist/main",
+      "sourceMaps": true,
+      "envFile": "${workspaceFolder}/.env",
+      "preLaunchTask": "npm: build:dev",
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

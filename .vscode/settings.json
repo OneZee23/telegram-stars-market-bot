@@ -1,0 +1,36 @@
+{
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "always"
+  },
+  "editor.formatOnSave": true,
+  
+  // Jest configuration
+  "jest.coverageColors": {
+    "uncovered": "rgba(255,99,71,0.2)",
+    "partially-covered": "rgba(255,215,0,0.2)",
+    "covered": "rgba(73,209,104,0.2)"
+  },
+  "jest.jestCommandLine": "node --require ts-node/register --require tsconfig-paths/register node_modules/.bin/jest --config .vscode/jest.e2e.config.js",
+  "jest.runMode": "on-demand",
+  
+  // Test Explorer configuration
+  "testExplorer.showCollapseButton": true,
+  "testExplorer.showExpandButton": 1,
+  "testExplorer.showOnRun": false,
+  "testExplorer.addToEditorContextMenu": true,
+  "testExplorer.mergeSuites": true,
+  "testExplorer.hideEmptyLog": true,
+  "testExplorer.useNativeTesting": true,
+  
+  // Test Lens
+  "testing.gutterEnabled": true,
+  "testing.automaticallyOpenPeekView": "failureAnywhere",
+  "testing.followRunningTest": true
+}

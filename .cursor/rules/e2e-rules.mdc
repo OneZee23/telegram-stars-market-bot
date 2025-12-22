@@ -1,0 +1,190 @@
+---
+description:
+globs: package.json,src/**/*.ts,test/**/*.ts,tsconfig.json,jest.config.e2e.js
+alwaysApply: false
+---
+
+---
+
+description: E2E guidelines for nest.js codebase
+globs: package.json, tsconfig.json, /test/jest.config.e2e.js, test/**/\*.ts, src/**/\*.ts
+alwaysApply: false
+
+---
+
+You are very experienced backend developer, working at Google.
+You have senior/lead expertise at node.js, typescript, nestjs, and kubernetes as well.
+You develop business-oriented apps. You server requirement of business. You don't give a fuck about junior-made shit from github.
+
+# E2E Testing Rules for telegram-stars-market-bot Service
+
+## General Structure
+
+### File Organization
+
+1. All e2e tests should be placed in the `test/e2e` directory
+2. Test files should be named using the pattern: `*.e2e.spec.ts`
+3. Group related tests in subdirectories (e.g., `types/`, `roll/`, `user/`)
+4. Place mock data in the `test/e2e/mocks` directory
+5. Place utility functions in the `test/e2e/utils` directory
+
+### Test File Structure
+
+```typescript
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import * as request from 'supertest';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+// ... other imports
+
+describe('Feature Name (e2e)', () => {
+  let app: INestApplication;
+  let dataSource: DataSource;
+
+  beforeEach(async () => {
+    const moduleFixture = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+    dataSource = app.get<DataSource>(getDataSourceToken());
+
+    await clearDatasource(dataSource);
+  });
+
+  afterAll(async () => {
+    await clearDatasource(dataSource);
+    await app.close();
+  });
+
+  describe('route /routeName', () => {
+    it('should do something', () => {
+      // test implementation
+    });
+  });
+});
+```
+
+## Test Writing Guidelines
+
+### 1. Test Organization
+
+- Group tests by routes using `describe('route /routeName')`
+- Use clear, descriptive test names that explain the expected behavior
+- Follow the pattern: "should [expected behavior]" for test names
+
+### 2. Request Structure
+
+```typescript
+await request(app.getHttpServer())
+  .post('/api/telegram-stars-market-bot/endpoint')
+  .set('x-uid', USER_ID)
+  .set('x-premium-status', 'true/false') // when testing premium features
+  .set('x-device-id', DEVICE_ID) // when testing
+  // and other needed headers for metadata
+  .send(requestData)
+  .expect(HttpStatus.OK)
+  .expect(expectedResponse);
+```
+
+### 3. Data Setup
+
+- Use mock data from `test/e2e/mocks` directory
+- Use utility functions from `test/e2e/utils` for common setup tasks
+- Clear database before each test using `clearDatasource()`
+- Set up required environment variables at the start of the test file
+
+### 4. Premium Features Testing
+
+- Always test both premium and non-premium scenarios
+- Set up premium limits in environment variables:
+
+```typescript
+process.env.ANY_LIMIT = '1';
+```
+
+### 5. Error Handling
+
+- Test error cases explicitly
+- Verify error responses include:
+  - status: 'error'
+  - code: 'ERR\_\*'
+  - message: descriptive error message
+
+### 6. Database Verification
+
+- Use the dataSource to verify database state after operations
+- Check both direct changes and related entities
+
+```typescript
+const entities = await dataSource
+  .getRepository(EntityName)
+  .findBy({ criteria });
+expect(entities).toMatchExpectedState();
+```
+
+## Best Practices
+
+1. **Isolation**
+   - Each test should be independent
+   - Clean up data before and after tests
+   - Don't rely on state from other tests
+
+2. **Completeness**
+   - Test both success and failure cases
+   - Include edge cases and boundary conditions
+   - Test premium and non-premium scenarios
+
+3. **Clarity**
+   - Use descriptive test names
+   - Comment complex test setups
+   - Document test requirements and assumptions
+
+4. **Performance**
+   - Keep tests focused and efficient
+   - Use appropriate batch sizes for data setup
+   - Consider using shared setup for related tests
+
+5. **Maintenance**
+   - Keep mock data up to date
+   - Regularly review and update test cases
+   - Document breaking changes in test requirements
+
+## Common Utilities
+
+### Data Setup
+
+```typescript
+import {
+  fillAndGetFolders,
+  fillAndGetTasks,
+} from '../utils/fill-mocked-data.util';
+import { clearDatasource } from '../utils/clear-datasource.util';
+```
+
+### Mock Data
+
+```typescript
+import { MAIN_TELEGRAM_USER_ID, MAIN_DEVICE_ID } from '../mocks/user.mock';
+import { mockedFoldersData } from '../mocks/folders.mock';
+import { mockedTasksData } from '../mocks/tasks.mock';
+```
+
+## Testing Checklist
+
+Before submitting a new e2e test, ensure:
+
+- [ ] Tests are placed in the correct directory
+- [ ] File naming follows the `*.e2e.spec.ts` pattern
+- [ ] All required imports are included
+- [ ] Database is properly cleaned before/after tests
+- [ ] Both success and error cases are covered
+- [ ] Premium/non-premium scenarios are tested
+- [ ] Mock data is properly defined
+- [ ] Test names are clear and descriptive
+- [ ] Comments explain complex scenarios
+- [ ] No hardcoded values (use mocks/constants)
+- [ ] All assertions are meaningful
+- [ ] Tests are independent of each other

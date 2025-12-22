@@ -80,7 +80,6 @@ Thumbs.db
 *.cer
 secrets/
 *.secret
-.werf_secret_key
 
 # Database
 *.sqlite
@@ -102,3 +101,7 @@ secrets/
 
 # Local documentation (personal guides, not for git)
 local_docs/
+
+# Fragment cookies (contains sensitive session data)
+fragment-cookies.json
+*.cookies.json

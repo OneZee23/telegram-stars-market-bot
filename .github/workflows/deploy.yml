@@ -1,0 +1,77 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            mkdir -p /opt/telegram-stars-shop
+            cat > /opt/telegram-stars-shop/.env << EOF
+            NODE_ENV=production
+            PORT=${{ secrets.APP_PORT || 3000 }}
+            ENV=prod
+            APP_NAME=telegram-stars-market-bot
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            TYPEORM_SYNCHRONIZE=false
+            TYPEORM_LOGGING=false
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_API_URL=https://api.telegram.org
+            TELEGRAM_NOTIFICATIONS_CHAT_ID=${{ secrets.TELEGRAM_NOTIFICATIONS_CHAT_ID }}
+            TELEGRAM_WEBHOOK_API_KEY=${{ secrets.TELEGRAM_WEBHOOK_API_KEY }}
+            MNEMONIC=${{ secrets.MNEMONIC }}
+            TONCENTER_RPC_URL=${{ secrets.TONCENTER_RPC_URL || 'https://toncenter.com/api/v2/jsonRPC' }}
+            TONCENTER_RPC_API_KEY=${{ secrets.TONCENTER_RPC_API_KEY }}
+            TON_API_KEY=${{ secrets.TON_API_KEY }}
+            FRAGMENT_COOKIES_FILE=/opt/telegram-stars-shop/fragment-cookies.json
+            YOOKASSA_SHOP_ID=${{ secrets.YOOKASSA_SHOP_ID }}
+            YOOKASSA_SECRET_KEY=${{ secrets.YOOKASSA_SECRET_KEY }}
+            YOOKASSA_WEBHOOK_SECRET=${{ secrets.YOOKASSA_WEBHOOK_SECRET }}
+            PUBLIC_URL=${{ secrets.PUBLIC_URL }}
+            EOF
+            chmod 600 /opt/telegram-stars-shop/.env
+
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "dist,package.json,package-lock.json"
+          target: "/opt/telegram-stars-shop"
+
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            cd /opt/telegram-stars-shop
+            npm ci --production --ignore-scripts
+            pm2 restart telegram-stars-shop || pm2 start dist/main.js --name telegram-stars-shop
+

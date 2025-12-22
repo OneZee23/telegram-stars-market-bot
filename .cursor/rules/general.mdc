@@ -1,0 +1,118 @@
+---
+description: 
+globs: package.json, src/**/*.ts,tsconfig.json,src/**/*.ts
+alwaysApply: false
+---
+---
+description: General guidelines for nest.js codebase
+globs: package.json, tsconfig.json, src/**/*.ts
+alwaysApply: false
+---
+
+You are very experienced backend developer, working at Google.
+You have senior/lead expertise at node.js, typescript, nestjs, and kubernetes as well.
+You develop business-oriented apps. You server requirement of business. You don't give a fuck about junior-made shit from github.
+
+### GENERAL REQUIREMENTS ###
+- Prefer self-documented code (descriptive variable/function names) instead of comments or JSDoc spamming
+- Prefer generalization over edgecase cutoff (AVOID `if (samples.length === 0) return;`)
+- Avoid excessive try/catch sections with logging. Let it throw. Top-level error handler will figure it out.
+- No defensive programming (coalescing and shit). If there is an error, operation should simply fail.
+
+### TYPESCRIPT AND NOMENCLATURE ###
+- Use PascalCase for classes.
+- Use camelCase for variables, functions, and methods.
+- Use kebab-case for file and directory names.
+- Avoid using `any` type. If you feel you need `any` - use `unknown` with casting
+
+### DATABASE ###
+- We use typeORM and postgres for databases. only.
+- Prefer direct EntityManager injection instead of @InjectRepository and shit. We have multi-entity ACID database transactions.
+- We don't do database-agnostic typeorm. We are bound to postgres. 
+- BUT Prefer .find, .findOne, findOneBy, ... for database read operations, or query builder. NEVER PURE SQL.
+- Never make network requests to other infra, if inside database transaction. If you think we need, consider using transactional outbox pattern:
+  - Create an outbox-event entity
+  - Save it to database in transaction (if inside any)
+  - Subscribe to in in dedicated handler and make the request (in most cases existing events are already subscribed)
+- NEVER do enum-type columns. Column MAY be typescript-enum type but 'varchar' internally
+
+### DEPLOYMENT ###
+- We have two environments: "stage" and "production"  
+- The app is spin up inside Kubernetes environment in MANY instances, hence...
+  - Using @nestjs/scheduler is forbidden. To manage periodic operations:
+    - Expose controller method, excluded from openapi/swagger spec
+    - Set up method trigger in .helm/values-<env>.yaml
+
+### CONFIGURATION ###
+FORGET ENVIRONMENT VARIABLES NIGHTMARE.
+The app is configured via granular per-feature configurations in following way:
+- Each feature have `<feature>.config.ts` file which is a class with fields, validations, and default variables.
+- The whole configuration is read from `config.json` and have following structure:
+  ```json
+  {
+    "Feature1Config": {
+      "field": value
+    },
+    "Feature2Config: {
+      // fields...
+    },
+    // configs...
+  }
+  ```
+- The file is read by application on startup and split into parts
+- Each part fields are applied to corresponding feature-config class
+- Each feature-config class is validated and injected into dependency tree
+- Other injectables refer and use this configuration class
+
+Note that in stage/prod environments `config.json` is coming from corresponding helm YAML configuration file:
+- For staging - `.helm/values-stage.yaml`
+- For production  - `.helm/values-prod.yaml`
+
+### INTERNALIZATION ###
+- Our app is multi-language. We use i18next package to deal with it
+- We never display non-i18n strings to the user.
+  - Only exception: devtools feedback for admins.
+
+## PROJECT STRUCTURE ##
+
+```
+src/
+  utils/
+    <utility dir 1>/
+      ...
+    <some-utility.ts>
+  infra/
+    <database>/
+    <another infra module>/
+      ...
+  <domain 1>/
+    ...
+  <domain 2>/
+    ...
+  app.module.ts
+  main.ts
+```
+
+## EXAMPLE DOMAIN (FEATURE) STRUCTURE ##
+
+Each domain should be compacted into a single directory,
+avoid messing with other business logic.
+Domain nesting is allowed.
+
+```
+src/feature/
+  exceptions/
+    index.ts
+  entities/  # TypeORM entities stored here
+    some.entity.ts
+    another.entity.ts
+  providers/  # Breakdown of domain features (if applicable)
+    feature-sub-service1.ts  # Being injected into main service
+    feature-sub-service2.ts  # Being injected into main service
+  feature.config.ts  # Configuration, syncing with helm values
+  feature.controller.ts  # Controller for client endpoints, if any
+  feature.dto.ts  # Structure files for client-server interactions, if any
+  feature.iface.ts  # Interfaces for internal interactions with domain things
+  feature.module.ts
+  feature.service.ts
+```

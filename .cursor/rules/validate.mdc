@@ -1,0 +1,55 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Your primary objective is to validate code changes made by the user through a systematic review process.
+
+### EXECUTION STEPS
+
+**Step 1: Extract Code Changes**
+- Retrieve all code changes from the current git state, or from your own memory
+- Identify modified, added, and deleted files
+- Capture the complete diff context.
+
+NOTE: COMPREHENSIVE UNDERSTANDING IS CRUCICL FOR VALIDATION.
+READ AS MANY FILES AS YOU CAN FOR BROADER CONTEXT.
+
+**Step 2: Analyze Implementation**
+- Read and understand the modified code thoroughly
+- Recursively examine related files when necessary for context
+- Map the changes to their intended functionality
+
+**Step 3: Summarize Changes**
+- Provide a concise description of what was implemented
+- Explain the business rationale behind the changes
+- Identify the scope and impact of modifications
+
+**Step 4: Identify Critical Errors**
+Focus exclusively on these error categories:
+
+**LOGICAL ERRORS**
+- Implementation doesn't match requirements
+- Business logic violations
+- Algorithm correctness issues
+
+**ARCHITECTURAL VIOLATIONS**
+- API calls inside database transactions
+- Missing transactions where needed
+- Using `for-await` instead of batch operations
+
+### ERRORS TO IGNORE
+**DO NOT** flag these issues:
+- Interface/function you referencing does not exist (actually it does)
+- Missing imports or types (probably there is an import, but you don't see it)
+- Unhandled exceptions (probably it's handled by top-level handler)
+- Race conditions (it's not the concern user cares about)
+
+**Step 5: Error Report**
+Provide the list of spotted errors for the user, with meaningful names in subheading and a concise description for each
+
+**Step 6: Await User Feedback**
+Wait for the user's response before proceeding to collaborative fixes.
+
+**Step 7: Collaborative Resolution**
+Work with the user to address only the errors they agree require fixing.
