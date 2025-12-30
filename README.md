@@ -72,9 +72,87 @@ Telegram Stars Shop — это Telegram бот, который покупает 
 
 ## Быстрый старт
 
-Проект в стадии разработки. Инструкции по локальному запуску и тестированию будут добавлены по мере разработки.
+### Запуск тестов
 
-Репозиторий публичный — можно клонировать, изучать код, запускать локально и помогать с разработкой. Инструкции по настройке окружения и запуску появятся позже.
+Для запуска e2e тестов необходимо:
+
+1. **Запустить PostgreSQL в Docker:**
+
+   ```bash
+   docker run -d \
+     --name telegram-stars-market-postgres \
+     -e POSTGRES_USER=postgres \
+     -e POSTGRES_PASSWORD=postgres \
+     -e POSTGRES_DB=postgres \
+     -p 5432:5432 \
+     postgres
+   ```
+
+2. **Создать `.env` файл в корне проекта:**
+
+   ```env
+   ENV=dev
+   PORT=3000
+
+   APP_NAME=telegram-stars-market-service
+
+   # Use for local dev:
+   # lt --port 3000 or ngrok
+   PUBLIC_URL=https://asd.ngrok-free.app
+
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=postgres
+   DB_USER=postgres
+   DB_PASS=postgres
+   DB_LOG=false
+   DB_SYNC=false
+   DB_MIGRATE=false
+
+   TYPEORM_CLI_HOST=localhost
+   TYPEORM_CLI_PORT=5432
+   TYPEORM_CLI_USERNAME=postgres
+   TYPEORM_CLI_PASSWORD=postgres
+   TYPEORM_CLI_DATABASE=postgres
+
+   # Telegram bot config (можно использовать тестовые значения)
+   BOT_TOKEN=8001958772:asd
+   TELEGRAM_WEBHOOK_API_KEY=asd
+   ```
+
+3. **Запустить тесты:**
+
+   **Через Cursor Testing:**
+   - Откройте любой тестовый файл (например, `test/e2e/app.e2e.spec.ts`)
+   - Нажмите на кнопку "Run Test" над тестом или используйте панель Testing в Cursor
+   - Тесты запустятся автоматически с использованием настроек из `.env`
+
+   **Через командную строку:**
+
+   ```bash
+   # Все e2e тесты
+   npm run test:e2e
+
+   # Unit тесты
+   npm test
+
+   # Тесты с покрытием
+   npm run test:cov
+   ```
+
+### Структура тестов
+
+- **E2E тесты** (`test/e2e/`) — используют `TestAppModule`, который исключает медленные модули (например, `TelegramBotModule`) для ускорения выполнения
+- **Утилиты для тестов:**
+  - `test/e2e/test-app.module.ts` — базовый модуль для e2e тестов
+  - `test/e2e/utils/create-test-app.util.ts` — утилита для создания тестового приложения
+  - `test/e2e/utils/clear-datasource.util.ts` — очистка базы данных перед тестами
+
+### Локальный запуск приложения
+
+Инструкции по полному локальному запуску приложения будут добавлены по мере разработки.
+
+Репозиторий публичный — можно клонировать, изучать код, запускать локально и помогать с разработкой.
 
 ---
 
