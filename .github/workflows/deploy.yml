@@ -1,9 +1,10 @@
 name: Deploy to Production
 
 on:
-  push:
-    branches:
-      - master
+  # Автодеплой отключен - деплоить некуда
+  # push:
+  #   branches:
+  #     - master
   workflow_dispatch:
 
 env:
