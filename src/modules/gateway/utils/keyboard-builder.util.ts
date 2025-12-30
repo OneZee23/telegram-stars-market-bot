@@ -1,3 +1,6 @@
+import { InlineKeyboardButton } from 'telegraf/types';
+import { InlineKeyboard } from '../types/keyboard.types';
+
 export class KeyboardBuilder {
   static createReplyKeyboard(buttons: string[][]): {
     keyboard: Array<Array<{ text: string }>>;
@@ -12,12 +15,23 @@ export class KeyboardBuilder {
   }
 
   static createInlineKeyboard(
-    buttons: Array<Array<{ text: string; callback_data: string }>>,
-  ): {
-    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
-  } {
+    buttons: InlineKeyboardButton[][],
+  ): InlineKeyboard {
     return {
       inline_keyboard: buttons,
+    };
+  }
+
+  static createInlineKeyboardWithBack(
+    buttons: InlineKeyboardButton[][],
+    backText: string,
+    backCallbackData: string,
+  ): InlineKeyboard {
+    return {
+      inline_keyboard: [
+        ...buttons,
+        [{ text: backText, callback_data: backCallbackData }],
+      ],
     };
   }
 }

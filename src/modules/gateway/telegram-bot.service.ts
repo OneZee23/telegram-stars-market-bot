@@ -6,8 +6,12 @@ import {
 } from '@nestjs/common';
 import { EventEmitter } from 'node:events';
 import { Telegraf } from 'telegraf';
-import { BotCommand, Update } from 'telegraf/types';
+import { BotCommand, CallbackQuery, Message, Update } from 'telegraf/types';
+import { BotCommandHandler } from './handlers/bot-command.handler';
+import { CallbackQueryHandler } from './handlers/callback-query.handler';
+import { MessageHandler } from './handlers/message.handler';
 import { TelegramBotConfig } from './telegram-bot.config';
+import { ContextFactory } from './utils/context-factory.util';
 
 @Injectable()
 export class TelegramBotService
@@ -18,6 +22,9 @@ export class TelegramBotService
     private readonly config: TelegramBotConfig,
     private readonly telegraf: Telegraf,
     private readonly logger: Logger,
+    private readonly botCommandHandler: BotCommandHandler,
+    private readonly callbackQueryHandler: CallbackQueryHandler,
+    private readonly messageHandler: MessageHandler,
   ) {
     super({ captureRejections: true });
     this.on('error', (err) => this.logger.warn(`Error: ${err}`));
@@ -45,14 +52,56 @@ export class TelegramBotService
 
     if ('message' in update) {
       this.emit('message', update.message);
-      await this.telegraf.handleUpdate(update);
+      await this.handleMessage(update.message, update.update_id);
     } else if ('callback_query' in update) {
-      await this.telegraf.handleUpdate(update);
+      await this.handleCallbackQuery(update.callback_query, update.update_id);
     } else {
       const type = Object.keys(update)
         .filter((k) => k !== 'update_id')
         .pop();
       this.logger.warn(`Unknown update type: ${type}`);
+    }
+  }
+
+  private async handleMessage(
+    message: Message,
+    updateId: number,
+  ): Promise<void> {
+    const ctx = ContextFactory.createFromMessage(
+      message,
+      updateId,
+      this.telegraf.telegram,
+      this.telegraf.botInfo,
+    );
+
+    if ('text' in message && message.text) {
+      const text = message.text.trim();
+
+      if (text.startsWith('/start')) {
+        await this.botCommandHandler.handleStart(ctx);
+        return;
+      }
+
+      await this.messageHandler.handleTextMessage(ctx, text);
+    }
+  }
+
+  private async handleCallbackQuery(
+    callbackQuery: CallbackQuery,
+    updateId: number,
+  ): Promise<void> {
+    const ctx = ContextFactory.createFromCallbackQuery(
+      callbackQuery,
+      updateId,
+      this.telegraf.telegram,
+      this.telegraf.botInfo,
+    );
+
+    if ('data' in callbackQuery && callbackQuery.data) {
+      await this.callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        callbackQuery.data,
+      );
     }
   }
 

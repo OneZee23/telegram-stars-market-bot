@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Context } from 'telegraf';
+import {
+  ExtraEditMessageText,
+  ExtraReplyMessage,
+} from 'telegraf/typings/telegram-types';
+import { InlineKeyboard, TelegramKeyboard } from '../types/keyboard.types';
 
 export interface StoredMessage {
   messageId: number;
@@ -15,12 +20,12 @@ export class MessageManagementService {
     ctx: Context,
     userId: string,
     text: string,
-    keyboard?: { inline_keyboard?: any[]; keyboard?: any[] },
+    keyboard?: TelegramKeyboard,
   ): Promise<number | null> {
-    const options: any = {};
-    if (keyboard?.inline_keyboard) {
-      options.reply_markup = { inline_keyboard: keyboard.inline_keyboard };
-    } else if (keyboard?.keyboard) {
+    const options: ExtraReplyMessage = {};
+    if (keyboard && 'inline_keyboard' in keyboard) {
+      options.reply_markup = keyboard;
+    } else if (keyboard && 'keyboard' in keyboard) {
       options.reply_markup = keyboard;
     }
 
@@ -42,7 +47,7 @@ export class MessageManagementService {
     ctx: Context,
     userId: string,
     text: string,
-    keyboard?: { inline_keyboard?: any[] },
+    keyboard?: InlineKeyboard,
   ): Promise<boolean> {
     const storedMessage = this.userMessages.get(userId);
     if (!storedMessage) {
@@ -50,9 +55,9 @@ export class MessageManagementService {
     }
 
     try {
-      const options: any = {};
-      if (keyboard?.inline_keyboard) {
-        options.reply_markup = { inline_keyboard: keyboard.inline_keyboard };
+      const options: ExtraEditMessageText = {};
+      if (keyboard) {
+        options.reply_markup = keyboard;
       }
 
       await ctx.telegram.editMessageText(
@@ -91,7 +96,7 @@ export class MessageManagementService {
     ctx: Context,
     userId: string,
     text: string,
-    keyboard?: { inline_keyboard?: any[]; keyboard?: any[] },
+    keyboard?: TelegramKeyboard,
   ): Promise<number | null> {
     await this.deleteMessage(ctx, userId);
     return this.sendMessage(ctx, userId, text, keyboard);
