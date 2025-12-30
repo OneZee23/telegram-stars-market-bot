@@ -129,10 +129,21 @@ export class TelegramBotService
   private async registerWebhook(): Promise<void> {
     const url = new URL(this.config.publicUrl);
     url.pathname += TelegramBotService.webhookPath;
-    await this.telegraf.telegram.setWebhook(url.href, {
-      secret_token: this.config.telegramWebhookApiKey,
-      allowed_updates: ['message', 'callback_query'],
-    });
+    const webhookUrl = url.href;
+    this.logger.log(`Setting webhook to: ${webhookUrl}`);
+    try {
+      await this.telegraf.telegram.setWebhook(webhookUrl, {
+        secret_token: this.config.telegramWebhookApiKey,
+        allowed_updates: ['message', 'callback_query'],
+      });
+      const webhookInfo = await this.telegraf.telegram.getWebhookInfo();
+      this.logger.log(
+        `Webhook set successfully. Info: ${JSON.stringify(webhookInfo)}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to set webhook: ${error}`);
+      throw error;
+    }
   }
 
   public static readonly webhookPath = 'telegram/webhook';
