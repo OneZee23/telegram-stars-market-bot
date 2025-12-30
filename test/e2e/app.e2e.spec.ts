@@ -1,35 +1,25 @@
-import { HttpStatus, INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { getDataSourceToken } from '@nestjs/typeorm';
+import { HttpStatus } from '@nestjs/common';
 import * as request from 'supertest';
-import { DataSource } from 'typeorm';
-import { AppModule } from '../../src/app.module';
-import { clearDatasource } from './utils/clear-datasource.util';
+import {
+  closeTestApp,
+  createTestApp,
+  TestAppContext,
+} from './utils/create-test-app.util';
 
 describe('Stars Shop Service (e2e)', () => {
-  let app: INestApplication;
-  let dataSource: DataSource;
+  let testContext: TestAppContext;
 
   beforeEach(async () => {
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
-    dataSource = app.get<DataSource>(getDataSourceToken());
-
-    await clearDatasource(dataSource);
+    testContext = await createTestApp();
   });
 
   afterAll(async () => {
-    await clearDatasource(dataSource);
-    await app.close();
+    await closeTestApp(testContext);
   });
 
   describe('Health Check', () => {
     it('should return health status', async () => {
-      await request(app.getHttpServer())
+      await request(testContext.app.getHttpServer())
         .get('/health/check')
         .expect(HttpStatus.OK)
         .expect('I am ok');

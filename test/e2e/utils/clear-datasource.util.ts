@@ -2,9 +2,13 @@ import { DataSource } from 'typeorm';
 import { UserService } from '../../../src/modules/user/user.service';
 
 export async function clearDatasource(
-  dataSource: DataSource,
+  dataSource: DataSource | undefined,
   userService?: UserService,
 ): Promise<void> {
+  if (!dataSource) {
+    return;
+  }
+
   const entities = dataSource.entityMetadatas;
 
   for await (const entity of entities) {
