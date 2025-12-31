@@ -6,7 +6,7 @@ import {
   TestAppContext,
 } from './utils/create-test-app.util';
 
-describe('Stars Shop Service (e2e)', () => {
+describe('Stars Market Bot Service (e2e)', () => {
   let testContext: TestAppContext;
 
   beforeEach(async () => {
