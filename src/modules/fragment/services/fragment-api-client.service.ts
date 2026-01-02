@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { FragmentConfig } from '../fragment.config';
 
 /**
@@ -16,6 +18,9 @@ interface FetchResponse<T> {
   headers: Headers;
   status: number;
 }
+
+// Type for response that works with both fetch and undici
+type FetchResponseType = Awaited<ReturnType<typeof fetch>>;
 
 /**
  * Fragment API client for interacting with fragment.com API
@@ -245,32 +250,20 @@ export class FragmentApiClientService {
 
     // Use proxy if configured
     // Node.js built-in fetch doesn't support proxy directly, so we use undici
-    let response: Response;
+    let response: FetchResponseType;
     if (this.proxyUrl) {
-      try {
-        // Use undici for proxy support
-        const { fetch: undiciFetch, ProxyAgent } = await import('undici');
-        this.logger.debug(
-          `Using proxy: ${this.proxyUrl.replace(/:[^:@]*@/, ':****@')}`,
-        );
-        response = await undiciFetch(urlObj.toString(), {
-          method: config.method,
-          headers,
-          body: config.method === 'POST' ? body : undefined,
-          dispatcher: new ProxyAgent(this.proxyUrl),
-        });
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `Failed to use proxy: ${errorMessage}. Falling back to direct connection.`,
-        );
-        response = await fetch(urlObj.toString(), {
-          method: config.method,
-          headers,
-          body: config.method === 'POST' ? body : undefined,
-        });
-      }
+      this.logger.debug(
+        `Using proxy: ${this.proxyUrl.replace(/:[^:@]*@/, ':****@')}`,
+      );
+      const proxyAgent = new ProxyAgent(this.proxyUrl);
+      const undiciResponse = await undiciFetch(urlObj.toString(), {
+        method: config.method,
+        headers,
+        body: config.method === 'POST' ? body : undefined,
+        dispatcher: proxyAgent,
+      });
+      // undici Response is compatible with fetch Response for our use case
+      response = undiciResponse as unknown as FetchResponseType;
     } else {
       response = await fetch(urlObj.toString(), {
         method: config.method,
