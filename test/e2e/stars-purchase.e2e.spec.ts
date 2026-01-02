@@ -35,14 +35,12 @@ describe('Stars Purchase E2E', () => {
   let entityManager: EntityManager;
 
   // Test configuration
-  // const TEST_USER_ID = '999999999';
-  const TEST_USER_ID = '498124936';
-  // const TEST_RECIPIENT_USERNAME = 'test_user'; // Change to a valid Telegram username
-  const TEST_RECIPIENT_USERNAME = 'onezee23'; // Change to a valid Telegram username
+  const TEST_USER_ID = '999999999';
+  const TEST_RECIPIENT_USERNAME = 'test_user'; // Change to a valid Telegram username
 
   // Second user for parallel tests
-  const TEST_USER_ID_2 = '1798931190';
-  const TEST_RECIPIENT_USERNAME_2 = 'onezee123';
+  const TEST_USER_ID_2 = '888888888';
+  const TEST_RECIPIENT_USERNAME_2 = 'test_user_2';
 
   beforeAll(async () => {
     // Get test values from environment or use defaults

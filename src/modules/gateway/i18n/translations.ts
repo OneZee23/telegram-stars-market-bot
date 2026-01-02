@@ -78,6 +78,7 @@ export const translations: Record<string, Translations> = {
       notInWhitelist:
         '🔒 Доступ ограничен\n\n' +
         'В данный момент тестирование доступно только для пользователей из whitelist.\n\n' +
+        'Ваш User ID: `{userId}`\n\n' +
         'Чтобы попасть в whitelist для тестирования:\n' +
         '1. Перейдите в канал {channel}\n' +
         '2. Найдите пост дня 14/30 челленджа: {post}\n' +
@@ -141,6 +142,7 @@ export const translations: Record<string, Translations> = {
       notInWhitelist:
         '🔒 Access Restricted\n\n' +
         'Currently, testing is only available for whitelisted users.\n\n' +
+        'Your User ID: `{userId}`\n\n' +
         'To get whitelisted for testing:\n' +
         '1. Go to channel {channel}\n' +
         '2. Find the post of day 14/30 challenge: {post}\n' +

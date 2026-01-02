@@ -211,6 +211,7 @@ export class CallbackQueryHandler {
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
+        .replace('{userId}', userId)
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
       await this.messageManagementService.editMessage(ctx, userId, message);
@@ -284,6 +285,7 @@ export class CallbackQueryHandler {
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
+        .replace('{userId}', userId)
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
       await this.messageManagementService.editMessage(ctx, userId, message);

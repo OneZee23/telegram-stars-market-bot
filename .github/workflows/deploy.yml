@@ -62,7 +62,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          source: 'dist,package.json,yarn.lock'
+          source: 'dist,package.json,yarn.lock,assets'
           target: '/opt/telegram-stars-market-bot'
 
       - uses: appleboy/ssh-action@v1.0.3
