@@ -47,7 +47,8 @@
     "ton-crypto": "^3.2.0",
     "tonweb": "^0.0.60",
     "tweetnacl": "^1.0.3",
-    "typeorm": "0.3.9"
+    "typeorm": "0.3.9",
+    "undici": "^6.19.8"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

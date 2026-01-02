@@ -49,4 +49,14 @@ export class FragmentConfig extends ConfigFragment {
   @IsOptional()
   @UseEnv('TONCENTER_RPC_API_KEY')
   public readonly toncenterApiKey?: string;
+
+  /**
+   * HTTP/HTTPS proxy for Fragment API requests
+   * Format: http://user:pass@host:port or http://host:port
+   * Optional: if not set, requests go directly
+   */
+  @IsString()
+  @IsOptional()
+  @UseEnv('FRAGMENT_PROXY')
+  public readonly proxy?: string;
 }
