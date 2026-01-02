@@ -190,7 +190,15 @@ export class FragmentApiClientService {
       headers.Referer = `https://${this.FRAGMENT_HOSTNAME}/stars/buy`;
     }
 
-    const urlObj = new URL(url, this.baseURL);
+    let urlObj: URL;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      urlObj = new URL(url);
+    } else {
+      // Clean URL - remove any existing query params before creating URL object
+      const cleanUrl = url.split('?')[0];
+      urlObj = new URL(cleanUrl, this.baseURL);
+    }
+
     if (config.isApi && this.apiHash) {
       urlObj.searchParams.set('hash', this.apiHash);
     }
@@ -207,9 +215,8 @@ export class FragmentApiClientService {
 
     // Log API requests for debugging
     if (config.isApi) {
-      this.logger.debug(
-        `API Request: ${config.method} ${urlObj.pathname}${urlObj.search ? `?${urlObj.search}` : ''}`,
-      );
+      const fullUrl = urlObj.toString();
+      this.logger.debug(`API Request: ${config.method} ${fullUrl}`);
       if (body) {
         this.logger.debug(`Request body: ${body.substring(0, 200)}`);
       }
