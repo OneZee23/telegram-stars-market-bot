@@ -53,6 +53,7 @@ jobs:
             FRAGMENT_MNEMONIC=${{ secrets.FRAGMENT_MNEMONIC }}
             TONCENTER_RPC_URL=${{ secrets.TONCENTER_RPC_URL }}
             TONCENTER_RPC_API_KEY=${{ secrets.TONCENTER_RPC_API_KEY }}
+            FRAGMENT_PROXY=${{ secrets.FRAGMENT_PROXY }}
             EOF
             chmod 600 /opt/telegram-stars-market-bot/.env
 

@@ -37,8 +37,11 @@ export class FragmentApiClientService {
 
   private starsDataHash: number | null = null;
 
+  private readonly proxyUrl?: string;
+
   constructor(private readonly config: FragmentConfig) {
     this.baseURL = `https://${this.FRAGMENT_HOSTNAME}`;
+    this.proxyUrl = this.config.proxy;
     this.loadCookiesFromConfig();
   }
 
@@ -240,11 +243,41 @@ export class FragmentApiClientService {
       }
     }
 
-    const response = await fetch(urlObj.toString(), {
-      method: config.method,
-      headers,
-      body: config.method === 'POST' ? body : undefined,
-    });
+    // Use proxy if configured
+    // Node.js built-in fetch doesn't support proxy directly, so we use undici
+    let response: Response;
+    if (this.proxyUrl) {
+      try {
+        // Use undici for proxy support
+        const { fetch: undiciFetch, ProxyAgent } = await import('undici');
+        this.logger.debug(
+          `Using proxy: ${this.proxyUrl.replace(/:[^:@]*@/, ':****@')}`,
+        );
+        response = await undiciFetch(urlObj.toString(), {
+          method: config.method,
+          headers,
+          body: config.method === 'POST' ? body : undefined,
+          dispatcher: new ProxyAgent(this.proxyUrl),
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Failed to use proxy: ${errorMessage}. Falling back to direct connection.`,
+        );
+        response = await fetch(urlObj.toString(), {
+          method: config.method,
+          headers,
+          body: config.method === 'POST' ? body : undefined,
+        });
+      }
+    } else {
+      response = await fetch(urlObj.toString(), {
+        method: config.method,
+        headers,
+        body: config.method === 'POST' ? body : undefined,
+      });
+    }
 
     // Update cookies from response
     // fetch API returns set-cookie as a single string with comma-separated values
