@@ -28,6 +28,7 @@ export interface Translations {
     purchaseError: string;
     notInWhitelist: string;
     queueBusy: string;
+    only50StarsAvailable: string;
   };
   errors: {
     usernameRequired: string;
@@ -88,6 +89,10 @@ export const translations: Record<string, Translations> = {
         '⏳ Очередь занята\n\n' +
         'В данный момент обрабатывается другая покупка. Пожалуйста, попробуйте через несколько секунд.\n\n' +
         'Система обрабатывает покупки последовательно, чтобы избежать ошибок.',
+      only50StarsAvailable:
+        '🎁 Тестовый режим\n\n' +
+        'В данный момент для тестирования доступна только покупка 50 звезд.\n\n' +
+        'Вернитесь назад и выберите "50 ⭐" для получения бесплатных тестовых звезд.',
     },
     errors: {
       usernameRequired:
@@ -152,6 +157,10 @@ export const translations: Record<string, Translations> = {
         '⏳ Queue is busy\n\n' +
         'Another purchase is currently being processed. Please try again in a few seconds.\n\n' +
         'The system processes purchases sequentially to avoid errors.',
+      only50StarsAvailable:
+        '🎁 Test Mode\n\n' +
+        'Currently, only 50 stars purchase is available for testing.\n\n' +
+        'Go back and select "50 ⭐" to get free test stars.',
     },
     errors: {
       usernameRequired:

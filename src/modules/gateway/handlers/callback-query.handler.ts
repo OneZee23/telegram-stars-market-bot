@@ -281,7 +281,6 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
     callbackData: string,
   ): Promise<void> {
-    // Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
@@ -292,13 +291,15 @@ export class CallbackQueryHandler {
       return;
     }
 
-    this.userStateService.clearState(userId);
-    const amount = callbackData.replace('amount_', '');
-    this.logger.log(`User ${userId} selected amount: ${amount} stars`);
-    const amountText = t.buyStars.selectedAmount.replace('{amount}', amount);
-    const text = `${t.buyStars.soon}\n\n${amountText}`;
-
-    await this.messageManagementService.editMessage(ctx, userId, text);
+    // Whitelist users can only purchase 50 stars
+    this.logger.warn(
+      `Whitelist user ${userId} attempted to select amount: ${callbackData}`,
+    );
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.buyStars.only50StarsAvailable,
+    );
   }
 
   private async handleCustomAmount(
@@ -306,6 +307,16 @@ export class CallbackQueryHandler {
     userId: string,
     t: ReturnType<typeof getTranslations>,
   ): Promise<void> {
+    const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
+    if (isWhitelisted) {
+      await this.messageManagementService.editMessage(
+        ctx,
+        userId,
+        t.buyStars.only50StarsAvailable,
+      );
+      return;
+    }
+
     this.userStateService.setState(userId, UserState.ENTERING_CUSTOM_AMOUNT);
     const text = t.buyStars.enterAmountPrompt;
 
