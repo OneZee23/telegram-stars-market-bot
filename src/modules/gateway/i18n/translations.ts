@@ -16,12 +16,18 @@ export interface Translations {
     forOther: string;
     forOtherLocked: string;
     selectAmount: string;
+    testModeSelectAmount: string;
     enterCustomAmount: string;
     usernameRequired: string;
     soon: string;
     enterAmountPrompt: string;
     invalidAmount: string;
     selectedAmount: string;
+    processing: string;
+    testPurchaseSuccess: string;
+    purchaseError: string;
+    notInWhitelist: string;
+    queueBusy: string;
   };
   errors: {
     usernameRequired: string;
@@ -51,6 +57,8 @@ export const translations: Record<string, Translations> = {
       forOther: 'Другому',
       forOtherLocked: '🔒 Другому',
       selectAmount: 'Выберите количество звезд:',
+      testModeSelectAmount:
+        '🎁 Тестовый режим\n\nВы можете получить 50 звезд бесплатно (только один раз):',
       enterCustomAmount: 'Ввести количество',
       usernameRequired:
         'Для покупки звезд необходимо установить username в настройках Telegram.',
@@ -59,6 +67,26 @@ export const translations: Record<string, Translations> = {
         'Введите количество звезд (минимум 500, максимум 200000):',
       invalidAmount: 'Неверное количество. Введите число от 500 до 200000.',
       selectedAmount: 'Выбрано: {amount} звезд',
+      processing: '⏳ Обработка запроса...',
+      testPurchaseSuccess:
+        '✅ Спасибо за тестирование!\n\n' +
+        'Звезды скоро придут на ваш аккаунт. Пожалуйста, проверьте:\n' +
+        '• Сообщения от Telegram\n' +
+        '• Баланс звезд в настройках\n\n' +
+        'Если что-то пошло не так, сообщите об этом в группе {channel} в комментариях к посту дня 14/30 челленджа: {post}',
+      purchaseError: '❌ Ошибка при покупке: {error}',
+      notInWhitelist:
+        '🔒 Доступ ограничен\n\n' +
+        'В данный момент тестирование доступно только для пользователей из whitelist.\n\n' +
+        'Чтобы попасть в whitelist для тестирования:\n' +
+        '1. Перейдите в канал {channel}\n' +
+        '2. Найдите пост дня 14/30 челленджа: {post}\n' +
+        '3. Узнайте подробности о том, как добавить себя в whitelist\n\n' +
+        'После добавления в whitelist вы сможете получить 50 звезд бесплатно!',
+      queueBusy:
+        '⏳ Очередь занята\n\n' +
+        'В данный момент обрабатывается другая покупка. Пожалуйста, попробуйте через несколько секунд.\n\n' +
+        'Система обрабатывает покупки последовательно, чтобы избежать ошибок.',
     },
     errors: {
       usernameRequired:
@@ -92,6 +120,8 @@ export const translations: Record<string, Translations> = {
       forOther: 'Other',
       forOtherLocked: '🔒 Other',
       selectAmount: 'Select the number of stars:',
+      testModeSelectAmount:
+        '🎁 Test Mode\n\nYou can get 50 stars for free (one time only):',
       enterCustomAmount: 'Enter custom amount',
       usernameRequired:
         'To buy stars, you need to set a username in Telegram settings.',
@@ -100,6 +130,26 @@ export const translations: Record<string, Translations> = {
         'Enter the number of stars (minimum 500, maximum 200000):',
       invalidAmount: 'Invalid amount. Enter a number between 500 and 200000.',
       selectedAmount: 'Selected: {amount} stars',
+      processing: '⏳ Processing request...',
+      testPurchaseSuccess:
+        '✅ Thank you for testing!\n\n' +
+        'Stars will arrive on your account soon. Please check:\n' +
+        '• Messages from Telegram\n' +
+        '• Stars balance in settings\n\n' +
+        'If something went wrong, please report it in the group {channel} in the comments to the post of day 14/30 challenge: {post}',
+      purchaseError: '❌ Purchase error: {error}',
+      notInWhitelist:
+        '🔒 Access Restricted\n\n' +
+        'Currently, testing is only available for whitelisted users.\n\n' +
+        'To get whitelisted for testing:\n' +
+        '1. Go to channel {channel}\n' +
+        '2. Find the post of day 14/30 challenge: {post}\n' +
+        '3. Learn how to add yourself to the whitelist\n\n' +
+        'After being added to the whitelist, you will be able to get 50 stars for free!',
+      queueBusy:
+        '⏳ Queue is busy\n\n' +
+        'Another purchase is currently being processed. Please try again in a few seconds.\n\n' +
+        'The system processes purchases sequentially to avoid errors.',
     },
     errors: {
       usernameRequired:

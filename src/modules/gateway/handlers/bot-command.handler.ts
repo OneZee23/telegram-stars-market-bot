@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { UserService } from '@modules/user/user.service';
+import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
 import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
@@ -7,13 +8,23 @@ import { KeyboardBuilder } from '../utils/keyboard-builder.util';
 
 @Injectable()
 export class BotCommandHandler {
+  private readonly logger = new Logger(BotCommandHandler.name);
+
   constructor(
     private readonly messageManagementService: MessageManagementService,
+    private readonly userService: UserService,
   ) {}
 
   async handleStart(ctx: Context): Promise<void> {
-    const userContext = ContextExtractor.extractUserContext(ctx);
+    const userContext = await ContextExtractor.getUserContext(
+      ctx,
+      this.userService,
+    );
     if (!userContext) return;
+
+    this.logger.log(
+      `User ${userContext.userId} (@${userContext.username || 'unknown'}) sent /start command`,
+    );
 
     const t = getTranslations(userContext.language);
 

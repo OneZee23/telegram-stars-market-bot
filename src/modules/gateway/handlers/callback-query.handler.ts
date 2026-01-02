@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
+import { WhitelistService } from '@modules/user/services/whitelist.service';
+import { UserService } from '@modules/user/user.service';
+import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
 import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
@@ -8,14 +11,26 @@ import { KeyboardBuilder } from '../utils/keyboard-builder.util';
 
 @Injectable()
 export class CallbackQueryHandler {
+  private readonly logger = new Logger(CallbackQueryHandler.name);
+
   constructor(
     private readonly messageManagementService: MessageManagementService,
     private readonly userStateService: UserStateService,
+    private readonly whitelistService: WhitelistService,
+    private readonly starsPurchaseService: StarsPurchaseService,
+    private readonly userService: UserService,
   ) {}
 
   async handleCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
-    const userContext = ContextExtractor.extractUserContext(ctx);
+    const userContext = await ContextExtractor.getUserContext(
+      ctx,
+      this.userService,
+    );
     if (!userContext) return;
+
+    this.logger.log(
+      `User ${userContext.userId} (@${userContext.username || 'unknown'}) clicked: ${callbackData}`,
+    );
 
     const t = getTranslations(userContext.language);
 
@@ -42,6 +57,9 @@ export class CallbackQueryHandler {
             },
           );
         }
+        break;
+      case 'amount_50_test':
+        await this.handleTestPurchase(ctx, userContext.userId, t, userContext);
         break;
       case 'amount_500':
       case 'amount_1000':
@@ -132,28 +150,128 @@ export class CallbackQueryHandler {
       return;
     }
 
-    const text = t.buyStars.selectAmount;
+    // Check if user is whitelisted for test purchases
+    const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
+    const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
 
-    const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [
-        { text: '500', callback_data: 'amount_500' },
-        { text: '1000', callback_data: 'amount_1000' },
-      ],
-      [
-        { text: '2000', callback_data: 'amount_2000' },
-        { text: '3000', callback_data: 'amount_3000' },
-      ],
-      [{ text: '5000', callback_data: 'amount_5000' }],
-      [{ text: t.buyStars.enterCustomAmount, callback_data: 'amount_custom' }],
-      [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
-    ]);
+    if (isWhitelisted && canClaim) {
+      // For whitelisted users: show only 50 stars button
+      const text = t.buyStars.testModeSelectAmount;
 
+      const keyboard = KeyboardBuilder.createInlineKeyboard([
+        [{ text: '50 ⭐', callback_data: 'amount_50_test' }],
+        [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
+      ]);
+
+      await this.messageManagementService.editMessage(
+        ctx,
+        userId,
+        text,
+        keyboard,
+      );
+    } else {
+      // For non-whitelisted users: show all amounts (but they won't work yet)
+      const text = t.buyStars.selectAmount;
+
+      const keyboard = KeyboardBuilder.createInlineKeyboard([
+        [
+          { text: '500', callback_data: 'amount_500' },
+          { text: '1000', callback_data: 'amount_1000' },
+        ],
+        [
+          { text: '2000', callback_data: 'amount_2000' },
+          { text: '3000', callback_data: 'amount_3000' },
+        ],
+        [{ text: '5000', callback_data: 'amount_5000' }],
+        [
+          {
+            text: t.buyStars.enterCustomAmount,
+            callback_data: 'amount_custom',
+          },
+        ],
+        [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
+      ]);
+
+      await this.messageManagementService.editMessage(
+        ctx,
+        userId,
+        text,
+        keyboard,
+      );
+    }
+  }
+
+  private async handleTestPurchase(
+    ctx: Context,
+    userId: string,
+    t: ReturnType<typeof getTranslations>,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+  ): Promise<void> {
+    // Check if user is whitelisted
+    const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
+    if (!isWhitelisted) {
+      const message = t.buyStars.notInWhitelist
+        .replace('{channel}', 'https://t.me/onezee_co')
+        .replace('{post}', 'https://t.me/onezee_co/49');
+      await this.messageManagementService.editMessage(ctx, userId, message);
+      return;
+    }
+
+    let username = ctx.from?.username;
+
+    if (!username && ctx.chat) {
+      try {
+        const chat = await ctx.telegram.getChat(ctx.chat.id);
+        if ('username' in chat && chat.username) {
+          username = chat.username;
+        }
+      } catch {
+        username = userContext?.username;
+      }
+    }
+
+    if (!username) {
+      const errorText = t.errors.usernameRequired;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Show processing message
     await this.messageManagementService.editMessage(
       ctx,
       userId,
-      text,
-      keyboard,
+      t.buyStars.processing,
     );
+
+    // Purchase 50 test stars
+    this.logger.log(
+      `User ${userId} (@${username}) initiated test purchase of 50 stars`,
+    );
+    const result = await this.starsPurchaseService.purchaseTestStars(
+      userId,
+      username,
+    );
+
+    if (result.success) {
+      // Success message with instructions
+      const successText = t.buyStars.testPurchaseSuccess
+        .replace('{channel}', 'https://t.me/onezee_co')
+        .replace('{post}', 'https://t.me/onezee_co/49');
+
+      await this.messageManagementService.editMessage(ctx, userId, successText);
+    } else {
+      // Error message
+      let errorText: string;
+      if (result.error === 'QUEUE_BUSY') {
+        errorText = t.buyStars.queueBusy;
+      } else {
+        errorText = t.buyStars.purchaseError.replace(
+          '{error}',
+          result.error || 'Unknown error',
+        );
+      }
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+    }
   }
 
   private async handleAmountSelected(
@@ -162,8 +280,19 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
     callbackData: string,
   ): Promise<void> {
+    // Check if user is whitelisted
+    const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
+    if (!isWhitelisted) {
+      const message = t.buyStars.notInWhitelist
+        .replace('{channel}', 'https://t.me/onezee_co')
+        .replace('{post}', 'https://t.me/onezee_co/49');
+      await this.messageManagementService.editMessage(ctx, userId, message);
+      return;
+    }
+
     this.userStateService.clearState(userId);
     const amount = callbackData.replace('amount_', '');
+    this.logger.log(`User ${userId} selected amount: ${amount} stars`);
     const amountText = t.buyStars.selectedAmount.replace('{amount}', amount);
     const text = `${t.buyStars.soon}\n\n${amountText}`;
 

@@ -1,0 +1,6 @@
+# Whitelist for free 50 stars test claims
+# Add one Telegram user ID per line (numbers only, no @ or usernames)
+# Example:
+# 123456789
+# 987654321
+

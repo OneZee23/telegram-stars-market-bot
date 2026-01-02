@@ -48,6 +48,11 @@ jobs:
             BOT_TOKEN=${{ secrets.BOT_TOKEN }}
             TELEGRAM_WEBHOOK_API_KEY=${{ secrets.TELEGRAM_WEBHOOK_API_KEY }}
             PUBLIC_URL=${{ secrets.PUBLIC_URL }}
+            FRAGMENT_COOKIES=${{ secrets.FRAGMENT_COOKIES }}
+            FRAGMENT_API_HASH=${{ secrets.FRAGMENT_API_HASH }}
+            FRAGMENT_MNEMONIC=${{ secrets.FRAGMENT_MNEMONIC }}
+            TONCENTER_RPC_URL=${{ secrets.TONCENTER_RPC_URL }}
+            TONCENTER_RPC_API_KEY=${{ secrets.TONCENTER_RPC_API_KEY }}
             EOF
             chmod 600 /opt/telegram-stars-market-bot/.env
 

@@ -28,6 +28,9 @@ export class UserEntity {
   @Column({ name: 'in_white_list', type: 'boolean', default: false })
   inWhiteList: boolean;
 
+  @Column({ name: 'test_claims', type: 'int', default: 0 })
+  testClaims: number;
+
   @CreateDateColumn({ name: 'created_at' })
   public readonly createdAt: Date;
 

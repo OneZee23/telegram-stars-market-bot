@@ -34,9 +34,27 @@ module.exports = {
     'import/no-extraneous-dependencies': [
       'error',
       {
-        devDependencies: ['**/*.spec.*', '**/*.sdk.*'],
+        devDependencies: ['**/*.spec.*', '**/*.sdk.*', 'scripts/**/*'],
         peerDependencies: true,
       },
     ],
+    '@typescript-eslint/no-require-imports': 'off',
+    '@typescript-eslint/no-var-requires': 'off',
   },
+  overrides: [
+    {
+      files: ['src/modules/fragment/**/*.ts'],
+      rules: {
+        '@typescript-eslint/no-require-imports': 'off',
+        '@typescript-eslint/no-var-requires': 'off',
+        'import/no-extraneous-dependencies': [
+          'error',
+          {
+            devDependencies: true,
+            peerDependencies: true,
+          },
+        ],
+      },
+    },
+  ],
 };
