@@ -181,18 +181,31 @@ export class FragmentApiClientService {
       this.logger.warn('No cookies available for request');
     }
 
+    // Add common headers for all requests
+    headers.Accept = config.isApi
+      ? 'application/json, text/javascript, */*; q=0.01'
+      : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8';
+    headers['Accept-Language'] = 'en-US,en;q=0.9';
+    headers['Accept-Encoding'] = 'gzip, deflate, br';
+    headers['Sec-Fetch-Dest'] = config.isApi ? 'empty' : 'document';
+    headers['Sec-Fetch-Mode'] = config.isApi ? 'cors' : 'navigate';
+    headers['Sec-Fetch-Site'] = 'none';
+    headers['Sec-Ch-Ua'] =
+      '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"';
+    headers['Sec-Ch-Ua-Mobile'] = '?0';
+    headers['Sec-Ch-Ua-Platform'] = '"Windows"';
+
     if (config.isApi) {
       headers['Content-Type'] =
         'application/x-www-form-urlencoded; charset=UTF-8';
       headers['X-Requested-With'] = 'XMLHttpRequest';
-      headers.Accept = 'application/json, text/javascript, */*; q=0.01';
       headers.Origin = `https://${this.FRAGMENT_HOSTNAME}`;
       headers.Referer = `https://${this.FRAGMENT_HOSTNAME}/stars/buy`;
-      headers['Accept-Language'] = 'en-US,en;q=0.9';
-      headers['Accept-Encoding'] = 'gzip, deflate, br';
-      headers['Sec-Fetch-Dest'] = 'empty';
-      headers['Sec-Fetch-Mode'] = 'cors';
       headers['Sec-Fetch-Site'] = 'same-origin';
+    } else {
+      // For GET requests, add referer
+      headers.Referer = `https://${this.FRAGMENT_HOSTNAME}/`;
+      headers['Upgrade-Insecure-Requests'] = '1';
     }
 
     let urlObj: URL;
@@ -275,14 +288,25 @@ export class FragmentApiClientService {
     const isJson = contentType.includes('application/json');
     const data = isJson ? await response.json() : await response.text();
 
-    // Extract apiUrlHash from HTML
-    if (typeof data === 'string') {
-      const oldHash = this.apiHash;
-      this.extractApiHash(data);
-      if (this.apiHash !== oldHash && this.apiHash) {
-        this.logger.debug(
-          `API hash extracted from HTML: ${this.apiHash.substring(0, 10)}...`,
+    // Extract apiUrlHash from HTML only if we don't have one from config
+    // and the response is not a Cloudflare challenge page
+    if (typeof data === 'string' && !this.apiHash) {
+      // Check if this is a Cloudflare challenge page
+      if (
+        data.includes('Just a moment') ||
+        data.includes('cf-browser-verification')
+      ) {
+        this.logger.warn(
+          'Received Cloudflare challenge page, skipping API hash extraction',
         );
+      } else {
+        const oldHash = this.apiHash;
+        this.extractApiHash(data);
+        if (this.apiHash !== oldHash && this.apiHash) {
+          this.logger.debug(
+            `API hash extracted from HTML: ${this.apiHash.substring(0, 10)}...`,
+          );
+        }
       }
     }
 
@@ -315,15 +339,37 @@ export class FragmentApiClientService {
   async initializeSession(): Promise<void> {
     this.logger.debug('Initializing Fragment session...');
 
-    await this.sendRequest<string>('/', {
-      method: 'GET',
-      isApi: false,
-    });
+    // If API hash is already set from config, skip HTML extraction
+    if (this.apiHash) {
+      this.logger.debug(
+        `API hash already set from config: ${this.apiHash.substring(0, 10)}...`,
+      );
+    } else {
+      // Try to get API hash from HTML (may fail if Cloudflare blocks)
+      try {
+        await this.sendRequest<string>('/', {
+          method: 'GET',
+          isApi: false,
+        });
 
-    await this.sendRequest<string>('/stars/buy', {
-      method: 'GET',
-      isApi: false,
-    });
+        await this.sendRequest<string>('/stars/buy', {
+          method: 'GET',
+          isApi: false,
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Failed to initialize session from HTML (Cloudflare may be blocking): ${errorMessage}. Using API hash from config.`,
+        );
+      }
+    }
+
+    if (!this.apiHash) {
+      throw new Error(
+        'API hash is not set. Please provide FRAGMENT_API_HASH in environment variables.',
+      );
+    }
 
     this.logger.debug('Session initialized successfully');
   }
