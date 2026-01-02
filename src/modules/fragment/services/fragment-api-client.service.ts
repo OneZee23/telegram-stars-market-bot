@@ -188,6 +188,11 @@ export class FragmentApiClientService {
       headers.Accept = 'application/json, text/javascript, */*; q=0.01';
       headers.Origin = `https://${this.FRAGMENT_HOSTNAME}`;
       headers.Referer = `https://${this.FRAGMENT_HOSTNAME}/stars/buy`;
+      headers['Accept-Language'] = 'en-US,en;q=0.9';
+      headers['Accept-Encoding'] = 'gzip, deflate, br';
+      headers['Sec-Fetch-Dest'] = 'empty';
+      headers['Sec-Fetch-Mode'] = 'cors';
+      headers['Sec-Fetch-Site'] = 'same-origin';
     }
 
     let urlObj: URL;
