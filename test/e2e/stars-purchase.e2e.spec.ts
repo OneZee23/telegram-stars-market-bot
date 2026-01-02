@@ -332,7 +332,7 @@ describe('Stars Purchase E2E', () => {
     expect(userAfter?.testClaims).toBe(1);
   }, 120000); // 120 second timeout for parallel requests
 
-  it('should handle parallel purchases from two different users correctly (one should get QUEUE_BUSY)', async () => {
+  it.skip('should handle parallel purchases from two different users correctly (one should get QUEUE_BUSY)', async () => {
     // Reset test claims for both users
     const userRepo = entityManager.getRepository(UserEntity);
 

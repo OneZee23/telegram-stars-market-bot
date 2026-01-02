@@ -288,27 +288,9 @@ export class FragmentApiClientService {
     const isJson = contentType.includes('application/json');
     const data = isJson ? await response.json() : await response.text();
 
-    // Extract apiUrlHash from HTML only if we don't have one from config
-    // and the response is not a Cloudflare challenge page
-    if (typeof data === 'string' && !this.apiHash) {
-      // Check if this is a Cloudflare challenge page
-      if (
-        data.includes('Just a moment') ||
-        data.includes('cf-browser-verification')
-      ) {
-        this.logger.warn(
-          'Received Cloudflare challenge page, skipping API hash extraction',
-        );
-      } else {
-        const oldHash = this.apiHash;
-        this.extractApiHash(data);
-        if (this.apiHash !== oldHash && this.apiHash) {
-          this.logger.debug(
-            `API hash extracted from HTML: ${this.apiHash.substring(0, 10)}...`,
-          );
-        }
-      }
-    }
+    // We don't extract API hash from HTML responses anymore
+    // API hash must be provided via FRAGMENT_API_HASH environment variable
+    // This avoids Cloudflare blocking GET requests to the website
 
     // Log API responses for debugging
     if (config.isApi) {
@@ -334,44 +316,24 @@ export class FragmentApiClientService {
   }
 
   /**
-   * Initialize session by loading main page and stars buy page
+   * Initialize session - only validates that API hash is set
+   * We don't make GET requests to the website to avoid Cloudflare blocking
    */
   async initializeSession(): Promise<void> {
     this.logger.debug('Initializing Fragment session...');
 
-    // If API hash is already set from config, skip HTML extraction
-    if (this.apiHash) {
-      this.logger.debug(
-        `API hash already set from config: ${this.apiHash.substring(0, 10)}...`,
-      );
-    } else {
-      // Try to get API hash from HTML (may fail if Cloudflare blocks)
-      try {
-        await this.sendRequest<string>('/', {
-          method: 'GET',
-          isApi: false,
-        });
-
-        await this.sendRequest<string>('/stars/buy', {
-          method: 'GET',
-          isApi: false,
-        });
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          `Failed to initialize session from HTML (Cloudflare may be blocking): ${errorMessage}. Using API hash from config.`,
-        );
-      }
-    }
-
+    // API hash must be provided via environment variable
+    // We don't fetch it from HTML to avoid Cloudflare blocking
     if (!this.apiHash) {
       throw new Error(
         'API hash is not set. Please provide FRAGMENT_API_HASH in environment variables.',
       );
     }
 
-    this.logger.debug('Session initialized successfully');
+    this.logger.debug(
+      `API hash set from config: ${this.apiHash.substring(0, 10)}...`,
+    );
+    this.logger.debug('Session initialized successfully (API-only mode)');
   }
 
   /**
@@ -397,10 +359,26 @@ export class FragmentApiClientService {
         isApi: true,
         data: { method: 'updateStarsBuyState', mode: 'new', lv: 'false' },
       });
-      const isValid = !response.data.error;
+
+      // Check if we got a Cloudflare challenge page
+      if (response.status === 403) {
+        const responseData = response.data as any;
+        if (
+          typeof responseData === 'string' &&
+          (responseData.includes('Just a moment') ||
+            responseData.includes('cf-browser-verification'))
+        ) {
+          this.logger.error(
+            'Cookies validity check failed: Cloudflare is blocking API requests. Please update FRAGMENT_COOKIES with fresh cookies.',
+          );
+          return false;
+        }
+      }
+
+      const isValid = response.status === 200 && !response.data.error;
       if (!isValid) {
         this.logger.warn(
-          `Cookies validity check failed: ${response.data.error || 'unknown error'}`,
+          `Cookies validity check failed: status ${response.status}, error: ${response.data.error || 'unknown error'}`,
         );
       }
       return isValid;
