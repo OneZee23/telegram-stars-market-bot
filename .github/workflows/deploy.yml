@@ -73,6 +73,6 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           script: |
             cd /opt/telegram-stars-market-bot
-            yarn install --production --frozen-lockfile --ignore-scripts
+            yarn install --production --frozen-lockfile
             pm2 restart telegram-stars-market-bot || pm2 start dist/main.js --name telegram-stars-market-bot
             pm2 save
