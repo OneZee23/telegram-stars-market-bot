@@ -27,6 +27,7 @@ export interface Translations {
     testPurchaseSuccess: string;
     purchaseError: string;
     notInWhitelist: string;
+    alreadyClaimed: string;
     queueBusy: string;
     only50StarsAvailable: string;
   };
@@ -85,6 +86,10 @@ export const translations: Record<string, Translations> = {
         '2. Найдите пост дня 14/30 челленджа: {post}\n' +
         '3. Узнайте подробности о том, как добавить себя в whitelist\n\n' +
         'После добавления в whitelist вы сможете получить 50 звезд бесплатно!',
+      alreadyClaimed:
+        '🚫 Тестовые звезды уже получены\n\n' +
+        'Вы уже получили 50 тестовых звезд. Тестирование доступно только один раз.\n\n' +
+        'Следите за новостями в канале {channel} и в посте дня 14/30 челленджа: {post}',
       queueBusy:
         '⏳ Очередь занята\n\n' +
         'В данный момент обрабатывается другая покупка. Пожалуйста, попробуйте через несколько секунд.\n\n' +
@@ -153,6 +158,10 @@ export const translations: Record<string, Translations> = {
         '2. Find the post of day 14/30 challenge: {post}\n' +
         '3. Learn how to add yourself to the whitelist\n\n' +
         'After being added to the whitelist, you will be able to get 50 stars for free!',
+      alreadyClaimed:
+        '🚫 Test stars already claimed\n\n' +
+        'You have already received 50 test stars. Testing is available only once.\n\n' +
+        'Follow the news in channel {channel} and in the post of day 14/30 challenge: {post}',
       queueBusy:
         '⏳ Queue is busy\n\n' +
         'Another purchase is currently being processed. Please try again in a few seconds.\n\n' +

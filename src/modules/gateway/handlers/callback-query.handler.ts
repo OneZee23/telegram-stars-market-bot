@@ -169,35 +169,19 @@ export class CallbackQueryHandler {
         text,
         keyboard,
       );
+    } else if (isWhitelisted && !canClaim) {
+      // User already claimed test stars
+      const message = t.buyStars.alreadyClaimed
+        .replace('{channel}', 'https://t.me/onezee_co')
+        .replace('{post}', 'https://t.me/onezee_co/49');
+      await this.messageManagementService.editMessage(ctx, userId, message);
     } else {
-      // For non-whitelisted users: show all amounts (but they won't work yet)
-      const text = t.buyStars.selectAmount;
-
-      const keyboard = KeyboardBuilder.createInlineKeyboard([
-        [
-          { text: '500', callback_data: 'amount_500' },
-          { text: '1000', callback_data: 'amount_1000' },
-        ],
-        [
-          { text: '2000', callback_data: 'amount_2000' },
-          { text: '3000', callback_data: 'amount_3000' },
-        ],
-        [{ text: '5000', callback_data: 'amount_5000' }],
-        [
-          {
-            text: t.buyStars.enterCustomAmount,
-            callback_data: 'amount_custom',
-          },
-        ],
-        [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
-      ]);
-
-      await this.messageManagementService.editMessage(
-        ctx,
-        userId,
-        text,
-        keyboard,
-      );
+      // For non-whitelisted users: show message about whitelist
+      const message = t.buyStars.notInWhitelist
+        .replace('{userId}', userId)
+        .replace('{channel}', 'https://t.me/onezee_co')
+        .replace('{post}', 'https://t.me/onezee_co/49');
+      await this.messageManagementService.editMessage(ctx, userId, message);
     }
   }
 
