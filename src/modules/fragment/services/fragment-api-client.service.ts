@@ -170,7 +170,16 @@ export class FragmentApiClientService {
     const headers: Record<string, string> = { 'User-Agent': this.USER_AGENT };
 
     const cookieHeader = this.getCookieHeader();
-    if (cookieHeader) headers.Cookie = cookieHeader;
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+      if (config.isApi) {
+        this.logger.debug(
+          `Cookie header: ${cookieHeader.substring(0, 100)}...`,
+        );
+      }
+    } else {
+      this.logger.warn('No cookies available for request');
+    }
 
     if (config.isApi) {
       headers['Content-Type'] =
@@ -198,7 +207,12 @@ export class FragmentApiClientService {
 
     // Log API requests for debugging
     if (config.isApi) {
-      this.logger.debug(`API Request: ${config.method} ${urlObj.pathname}`);
+      this.logger.debug(
+        `API Request: ${config.method} ${urlObj.pathname}${urlObj.search ? `?${urlObj.search}` : ''}`,
+      );
+      if (body) {
+        this.logger.debug(`Request body: ${body.substring(0, 200)}`);
+      }
     }
 
     const response = await fetch(urlObj.toString(), {
@@ -265,6 +279,15 @@ export class FragmentApiClientService {
       this.logger.debug(
         `API Response: ${response.status} ${response.statusText}`,
       );
+      if (response.status !== 200) {
+        const responseText =
+          typeof data === 'string'
+            ? data.substring(0, 500)
+            : JSON.stringify(data).substring(0, 500);
+        this.logger.warn(
+          `API Error Response (${response.status}): ${responseText}`,
+        );
+      }
     }
 
     return {
