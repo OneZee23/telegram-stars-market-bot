@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 // eslint-disable-next-line import/no-extraneous-dependencies
+import { sanitizeLogMessage } from '@common/utils/log-sanitizer.util';
 import { fetch as undiciFetch } from 'undici';
 import { FragmentConfig } from '../fragment.config';
 import { ProxyManagerService } from './proxy-manager.service';
@@ -56,45 +57,11 @@ export class FragmentApiClientService {
    * Initialize proxy manager with configured proxies
    */
   private initializeProxyManager(): void {
-    // Log all FRAGMENT_* environment variables for debugging
-    const fragmentEnvVars = Object.keys(process.env)
-      .filter((key) => key.startsWith('FRAGMENT_'))
-      .map((key) => {
-        const value = process.env[key];
-        // Mask sensitive values (proxies contain passwords)
-        if (key === 'FRAGMENT_PROXIES' && value) {
-          const masked = value.replace(/:[^:@]*@/g, ':****@');
-          return `${key}=${masked.substring(0, 100)}${value.length > 100 ? '...' : ''}`;
-        }
-        // Don't log cookies or mnemonic fully
-        if (
-          (key === 'FRAGMENT_COOKIES' || key === 'FRAGMENT_MNEMONIC') &&
-          value
-        ) {
-          return `${key}=${value.substring(0, 20)}... (length: ${value.length})`;
-        }
-        return `${key}=${value ? `"${value.substring(0, 50)}${value.length > 50 ? '...' : ''}"` : 'undefined'}`;
-      });
-
-    this.logger.debug(
-      `FRAGMENT_* environment variables: ${fragmentEnvVars.length > 0 ? fragmentEnvVars.join(', ') : 'none found'}`,
-    );
-
-    // Log raw config value for debugging
-    const rawProxies = this.config.proxies;
-    this.logger.debug(
-      `FRAGMENT_PROXIES config value: ${rawProxies ? `"${rawProxies.substring(0, 50)}..." (length: ${rawProxies.length}, type: ${typeof rawProxies})` : 'undefined/null/empty'}`,
-    );
-
-    // Also check environment variable directly for debugging
-    const envProxies = process.env.FRAGMENT_PROXIES;
-    this.logger.debug(
-      `process.env.FRAGMENT_PROXIES: ${envProxies ? `"${envProxies.substring(0, 50)}..." (length: ${envProxies.length})` : 'undefined/null/empty'}`,
-    );
-
     // Parse proxy URLs from config
+    const rawProxies = this.config.proxies;
+
     if (!rawProxies) {
-      this.logger.debug('FRAGMENT_PROXIES not configured in config object');
+      this.logger.debug('FRAGMENT_PROXIES not configured');
       this.proxyManager.initialize(
         [],
         this.config.proxyPurchaseUrl,
@@ -103,12 +70,9 @@ export class FragmentApiClientService {
       return;
     }
 
-    this.logger.debug(
-      `Parsing proxies from config (length: ${rawProxies.length})`,
-    );
     const proxyUrls = this.parseProxyUrls(rawProxies);
-    this.logger.debug(
-      `Parsed ${proxyUrls.length} proxy URL(s): ${proxyUrls.map((url) => this.maskProxyUrl(url)).join(', ')}`,
+    this.logger.log(
+      `Proxy manager initialized with ${proxyUrls.length} proxy(ies): ${proxyUrls.map((url) => this.maskProxyUrl(url)).join(', ')}`,
     );
 
     // Initialize proxy manager (always uses failover strategy)
@@ -333,9 +297,12 @@ export class FragmentApiClientService {
     // Log API requests for debugging
     if (config.isApi) {
       const fullUrl = urlObj.toString();
-      this.logger.debug(`API Request: ${config.method} ${fullUrl}`);
+      this.logger.debug(
+        `API Request: ${config.method} ${sanitizeLogMessage(fullUrl)}`,
+      );
       if (body) {
-        this.logger.debug(`Request body: ${body.substring(0, 200)}`);
+        const sanitizedBody = sanitizeLogMessage(body.substring(0, 200));
+        this.logger.debug(`Request body: ${sanitizedBody}`);
       }
     }
 
@@ -345,28 +312,12 @@ export class FragmentApiClientService {
 
     if (this.proxyManager.isEnabled()) {
       // Try proxies one by one until we find a working one
+      const availableProxies = this.proxyManager.getProxies();
       let lastError: Error | null = null;
       const triedProxies: string[] = [];
+      let success = false;
 
-      while (true) {
-        const proxyUrl = this.proxyManager.getNextProxy();
-
-        if (!proxyUrl) {
-          // No working proxy available
-          this.logger.error(
-            `All proxies are unavailable. Tried: ${triedProxies.map((url) => this.maskProxyUrl(url)).join(', ')}`,
-          );
-          throw lastError || new Error('No working proxy available');
-        }
-
-        // Skip if we already tried this proxy
-        if (triedProxies.includes(proxyUrl)) {
-          this.logger.error(
-            `All proxies failed. Tried: ${triedProxies.map((url) => this.maskProxyUrl(url)).join(', ')}`,
-          );
-          throw lastError || new Error('All proxies failed');
-        }
-
+      for (const proxyUrl of availableProxies) {
         triedProxies.push(proxyUrl);
         const maskedUrl = proxyUrl.replace(/:[^:@]*@/, ':****@');
         this.logger.debug(`Using proxy: ${maskedUrl}`);
@@ -374,6 +325,7 @@ export class FragmentApiClientService {
         const proxyAgent = this.proxyManager.getProxyAgent(proxyUrl);
 
         try {
+          // eslint-disable-next-line no-await-in-loop
           const undiciResponse = await undiciFetch(urlObj.toString(), {
             method: config.method,
             headers,
@@ -385,6 +337,7 @@ export class FragmentApiClientService {
 
           // Mark proxy as successful (even if HTTP status is not 200, proxy itself worked)
           this.proxyManager.markProxySuccess(proxyUrl);
+          success = true;
           break; // Success, exit retry loop
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -402,19 +355,28 @@ export class FragmentApiClientService {
           if (isNetworkError) {
             // Mark proxy as failed (counts towards max failures)
             this.proxyManager.markProxyFailed(proxyUrl, errorMessage);
+            const sanitizedError = sanitizeLogMessage(errorMessage);
             this.logger.warn(
-              `Network error with proxy ${maskedUrl}: ${errorMessage}. Trying next proxy...`,
+              `Network error with proxy ${maskedUrl}: ${sanitizedError}. Trying next proxy...`,
             );
-            // Continue loop to try next proxy (triedProxies will prevent retrying this one)
-            continue; // Try next proxy
+            // Continue to next proxy in loop
           } else {
             // For other errors, don't mark as failed (might be API issue), but still throw
+            const sanitizedError = sanitizeLogMessage(errorMessage);
             this.logger.debug(
-              `Error with proxy ${maskedUrl} (not marking as failed): ${errorMessage}`,
+              `Error with proxy ${maskedUrl} (not marking as failed): ${sanitizedError}`,
             );
             throw error;
           }
         }
+      }
+
+      // If we exhausted all proxies without success
+      if (!success) {
+        this.logger.error(
+          `All proxies failed. Tried: ${triedProxies.map((proxy) => this.maskProxyUrl(proxy)).join(', ')}`,
+        );
+        throw lastError || new Error('All proxies failed');
       }
     } else {
       // No proxy configured, use direct connection
@@ -564,7 +526,8 @@ export class FragmentApiClientService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Cookies validity check exception: ${errorMessage}`);
+      const sanitizedError = sanitizeLogMessage(errorMessage);
+      this.logger.warn(`Cookies validity check exception: ${sanitizedError}`);
       return false;
     }
   }

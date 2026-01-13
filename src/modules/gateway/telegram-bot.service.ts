@@ -1,4 +1,8 @@
 import {
+  sanitizeLogMessage,
+  sanitizeLogObject,
+} from '@common/utils/log-sanitizer.util';
+import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
@@ -48,7 +52,8 @@ export class TelegramBotService
   }
 
   async handleUpdate(update: Update): Promise<void> {
-    this.logger.log(`Incoming update: ${JSON.stringify(update)}`);
+    const sanitizedUpdate = sanitizeLogObject(update);
+    this.logger.log(`Incoming update: ${JSON.stringify(sanitizedUpdate)}`);
 
     if ('message' in update) {
       this.emit('message', update.message);
@@ -130,18 +135,38 @@ export class TelegramBotService
     const url = new URL(this.config.publicUrl);
     url.pathname += TelegramBotService.webhookPath;
     const webhookUrl = url.href;
-    this.logger.log(`Setting webhook to: ${webhookUrl}`);
+    this.logger.log(`Setting webhook to: ${sanitizeLogMessage(webhookUrl)}`);
     try {
       await this.telegraf.telegram.setWebhook(webhookUrl, {
         secret_token: this.config.telegramWebhookApiKey,
         allowed_updates: ['message', 'callback_query'],
       });
       const webhookInfo = await this.telegraf.telegram.getWebhookInfo();
+
+      // Log basic webhook info (sanitize URL)
+      const sanitizedUrl = sanitizeLogMessage(webhookInfo.url || '');
       this.logger.log(
-        `Webhook set successfully. Info: ${JSON.stringify(webhookInfo)}`,
+        `Webhook set successfully. URL: ${sanitizedUrl}, Pending updates: ${webhookInfo.pending_update_count}`,
       );
+
+      // Warn if there were previous errors
+      if (webhookInfo.last_error_message) {
+        const errorDate = webhookInfo.last_error_date
+          ? new Date(webhookInfo.last_error_date * 1000).toISOString()
+          : 'unknown';
+        const sanitizedError = sanitizeLogMessage(
+          webhookInfo.last_error_message,
+        );
+        this.logger.warn(
+          `Previous webhook error detected: ${sanitizedError} (at ${errorDate})`,
+        );
+      }
     } catch (error) {
-      this.logger.error(`Failed to set webhook: ${error}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to set webhook: ${sanitizeLogMessage(errorMessage)}`,
+      );
       throw error;
     }
   }

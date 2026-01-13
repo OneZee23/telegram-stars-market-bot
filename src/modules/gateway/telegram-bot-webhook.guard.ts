@@ -24,7 +24,7 @@ export class TelegramBotWebhookGuard implements CanActivate {
       throw new ForbiddenException('Missing apikey from telegram');
     }
     if (apiKey !== this.config.telegramWebhookApiKey) {
-      this.logger.warn(`Received request with wrong apikey: ${apiKey}`);
+      this.logger.warn(`Received request with wrong apikey: ***`);
       throw new UnauthorizedException('Telegram apikey mismatched');
     }
     return true;

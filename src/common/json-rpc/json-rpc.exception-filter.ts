@@ -1,8 +1,9 @@
-import { ArgumentsHost, Catch, ExceptionFilter, Logger } from '@nestjs/common';
-import { Request } from 'express';
-import { JsonRpc } from '@common/json-rpc/json-rpc';
 import { AppError } from '@common/errors/app-error';
 import { singleLineMessage } from '@common/errors/single-line-message';
+import { JsonRpc } from '@common/json-rpc/json-rpc';
+import { sanitizeLogMessage } from '@common/utils/log-sanitizer.util';
+import { ArgumentsHost, Catch, ExceptionFilter, Logger } from '@nestjs/common';
+import { Request } from 'express';
 
 function display(request: Request): string {
   const uid = request.header('x-uid');
@@ -67,17 +68,23 @@ export class JsonRpcExceptionFilter implements ExceptionFilter {
   private displayException(exception: AppError, context: ArgumentsHost): void {
     const requestText = display(context.switchToHttp().getRequest());
     const reason = `${exception.code}: ${exception.devMessage()}`;
-    this.logger.warn(`${requestText} failed with ${reason}`);
+    this.logger.warn(
+      `${sanitizeLogMessage(requestText)} failed with ${sanitizeLogMessage(reason)}`,
+    );
   }
 
   private displayError(error: Error, context: ArgumentsHost): void {
     const requestText = display(context.switchToHttp().getRequest());
     const message = singleLineMessage(error);
-    this.logger.error(`Unexpected error on ${requestText}: ${message}`);
+    this.logger.error(
+      `Unexpected error on ${sanitizeLogMessage(requestText)}: ${sanitizeLogMessage(message)}`,
+    );
   }
 
   private onCatchFailed(reason: Error): void {
     const message = singleLineMessage(reason);
-    this.logger.error(`Failed to catch an error: ${message}`);
+    this.logger.error(
+      `Failed to catch an error: ${sanitizeLogMessage(message)}`,
+    );
   }
 }
