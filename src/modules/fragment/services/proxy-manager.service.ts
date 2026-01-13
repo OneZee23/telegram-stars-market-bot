@@ -33,6 +33,10 @@ export class ProxyManagerService {
     purchaseUrl?: string,
     expiresAt?: string,
   ): void {
+    this.logger.debug(
+      `Initializing proxy manager with ${proxyUrls?.length || 0} proxy URL(s)`,
+    );
+
     if (!proxyUrls || proxyUrls.length === 0) {
       this.logger.debug('No proxies configured, proxy manager disabled');
       this.proxies = [];
@@ -43,7 +47,10 @@ export class ProxyManagerService {
     this.proxies = proxyUrls
       .map((url) => url.trim())
       .filter((url) => {
-        if (!url) return false;
+        if (!url) {
+          this.logger.debug('Skipping empty proxy URL');
+          return false;
+        }
         if (!isValidProxyUrl(url)) {
           this.logger.warn(
             `Invalid proxy URL format, skipping: ${maskProxyUrl(url)}`,
@@ -54,21 +61,35 @@ export class ProxyManagerService {
       });
 
     if (this.proxies.length === 0) {
-      this.logger.warn('No valid proxies found after filtering');
+      this.logger.warn(
+        `No valid proxies found after filtering. Input: ${proxyUrls.map((url) => maskProxyUrl(url)).join(', ')}`,
+      );
       return;
     }
 
     // Store purchase URL
     this.purchaseUrl = purchaseUrl;
+    if (purchaseUrl) {
+      this.logger.debug(`Proxy purchase URL configured: ${purchaseUrl}`);
+    }
 
     // Parse expiration date if provided
     if (expiresAt) {
+      this.logger.debug(
+        `Parsing expiration date: "${expiresAt}" (length: ${expiresAt.length})`,
+      );
       this.expiresAt = parseProxyExpirationDate(expiresAt);
       if (!this.expiresAt) {
         this.logger.warn(
-          `Failed to parse expiration date: ${expiresAt}. Expected format: DD.MM.YY, HH:mm (e.g., "13.04.26, 08:01")`,
+          `Failed to parse expiration date: "${expiresAt}". Expected format: DD.MM.YY, HH:mm (e.g., "13.04.26, 08:01")`,
+        );
+      } else {
+        this.logger.log(
+          `Proxy expiration date parsed successfully: ${this.expiresAt.toISOString()}`,
         );
       }
+    } else {
+      this.logger.debug('No expiration date configured for proxies');
     }
 
     // Initialize health status for all proxies

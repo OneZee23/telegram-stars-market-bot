@@ -57,9 +57,23 @@ export class FragmentApiClientService {
    */
   private initializeProxyManager(): void {
     // Parse proxy URLs from config
-    const proxyUrls = this.config.proxies
-      ? this.parseProxyUrls(this.config.proxies)
-      : [];
+    if (!this.config.proxies) {
+      this.logger.debug('FRAGMENT_PROXIES not configured');
+      this.proxyManager.initialize(
+        [],
+        this.config.proxyPurchaseUrl,
+        this.config.proxiesExpiresAt,
+      );
+      return;
+    }
+
+    this.logger.debug(
+      `Parsing proxies from config (length: ${this.config.proxies.length})`,
+    );
+    const proxyUrls = this.parseProxyUrls(this.config.proxies);
+    this.logger.debug(
+      `Parsed ${proxyUrls.length} proxy URL(s): ${proxyUrls.map((url) => this.maskProxyUrl(url)).join(', ')}`,
+    );
 
     // Initialize proxy manager (always uses failover strategy)
     this.proxyManager.initialize(
