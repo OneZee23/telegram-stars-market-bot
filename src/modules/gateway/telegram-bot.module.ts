@@ -1,37 +1,32 @@
 import { FragmentModule } from '@modules/fragment/fragment.module';
+import { TelegramCoreModule } from '@modules/telegram-core/telegram-core.module';
 import { UserModule } from '@modules/user/user.module';
 import { Logger, Module } from '@nestjs/common';
-import { Telegraf } from 'telegraf';
 import { BotCommandHandler } from './handlers/bot-command.handler';
 import { CallbackQueryHandler } from './handlers/callback-query.handler';
 import { MessageHandler } from './handlers/message.handler';
 import { MessageManagementService } from './services/message-management.service';
 import { UserStateService } from './services/user-state.service';
-import { TelegramBotConfig } from './telegram-bot.config';
+import { TelegramBotWebhookGuard } from './telegram-bot-webhook.guard';
 import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Module({
-  imports: [UserModule, FragmentModule],
+  imports: [TelegramCoreModule, UserModule, FragmentModule],
   providers: [
-    TelegramBotConfig,
     TelegramBotService,
     MessageManagementService,
     UserStateService,
     BotCommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    {
-      provide: Telegraf,
-      inject: [TelegramBotConfig],
-      useFactory: (config: TelegramBotConfig) => new Telegraf(config.botToken),
-    },
+    TelegramBotWebhookGuard,
     {
       provide: Logger,
       useValue: new Logger('TelegramBot'),
     },
   ],
   controllers: [TelegramBotController],
-  exports: [Telegraf, TelegramBotService],
+  exports: [TelegramBotService],
 })
 export class TelegramBotModule {}
