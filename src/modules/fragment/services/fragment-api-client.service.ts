@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 // eslint-disable-next-line import/no-extraneous-dependencies
-import { ProxyAgent, fetch as undiciFetch } from 'undici';
+import { fetch as undiciFetch } from 'undici';
 import { FragmentConfig } from '../fragment.config';
+import { ProxyManagerService } from './proxy-manager.service';
 
 /**
  * Fragment API cookies structure
@@ -42,12 +43,52 @@ export class FragmentApiClientService {
 
   private starsDataHash: number | null = null;
 
-  private readonly proxyUrl?: string;
-
-  constructor(private readonly config: FragmentConfig) {
+  constructor(
+    private readonly config: FragmentConfig,
+    private readonly proxyManager: ProxyManagerService,
+  ) {
     this.baseURL = `https://${this.FRAGMENT_HOSTNAME}`;
-    this.proxyUrl = this.config.proxy;
     this.loadCookiesFromConfig();
+    this.initializeProxyManager();
+  }
+
+  /**
+   * Initialize proxy manager with configured proxies
+   */
+  private initializeProxyManager(): void {
+    // Parse proxy URLs from config
+    const proxyUrls = this.config.proxies
+      ? this.parseProxyUrls(this.config.proxies)
+      : [];
+
+    // Initialize proxy manager (always uses failover strategy)
+    this.proxyManager.initialize(
+      proxyUrls,
+      this.config.proxyPurchaseUrl,
+      this.config.proxiesExpiresAt,
+    );
+  }
+
+  /**
+   * Parse proxy URLs from string (supports comma and newline separators)
+   */
+  private parseProxyUrls(proxiesStr: string): string[] {
+    if (!proxiesStr) {
+      return [];
+    }
+
+    // Split by comma or newline
+    return proxiesStr
+      .split(/[,\n]/)
+      .map((url) => url.trim())
+      .filter((url) => url.length > 0);
+  }
+
+  /**
+   * Mask proxy URL for logging (hide password)
+   */
+  private maskProxyUrl(url: string): string {
+    return url.replace(/:[^:@]*@/, ':****@');
   }
 
   /**
@@ -251,20 +292,82 @@ export class FragmentApiClientService {
     // Use proxy if configured
     // Node.js built-in fetch doesn't support proxy directly, so we use undici
     let response: FetchResponseType;
-    if (this.proxyUrl) {
-      this.logger.debug(
-        `Using proxy: ${this.proxyUrl.replace(/:[^:@]*@/, ':****@')}`,
-      );
-      const proxyAgent = new ProxyAgent(this.proxyUrl);
-      const undiciResponse = await undiciFetch(urlObj.toString(), {
-        method: config.method,
-        headers,
-        body: config.method === 'POST' ? body : undefined,
-        dispatcher: proxyAgent,
-      });
-      // undici Response is compatible with fetch Response for our use case
-      response = undiciResponse as unknown as FetchResponseType;
+
+    if (this.proxyManager.isEnabled()) {
+      // Try proxies one by one until we find a working one
+      let lastError: Error | null = null;
+      const triedProxies: string[] = [];
+
+      while (true) {
+        const proxyUrl = this.proxyManager.getNextProxy();
+
+        if (!proxyUrl) {
+          // No working proxy available
+          this.logger.error(
+            `All proxies are unavailable. Tried: ${triedProxies.map((url) => this.maskProxyUrl(url)).join(', ')}`,
+          );
+          throw lastError || new Error('No working proxy available');
+        }
+
+        // Skip if we already tried this proxy
+        if (triedProxies.includes(proxyUrl)) {
+          this.logger.error(
+            `All proxies failed. Tried: ${triedProxies.map((url) => this.maskProxyUrl(url)).join(', ')}`,
+          );
+          throw lastError || new Error('All proxies failed');
+        }
+
+        triedProxies.push(proxyUrl);
+        const maskedUrl = proxyUrl.replace(/:[^:@]*@/, ':****@');
+        this.logger.debug(`Using proxy: ${maskedUrl}`);
+
+        const proxyAgent = this.proxyManager.getProxyAgent(proxyUrl);
+
+        try {
+          const undiciResponse = await undiciFetch(urlObj.toString(), {
+            method: config.method,
+            headers,
+            body: config.method === 'POST' ? body : undefined,
+            dispatcher: proxyAgent,
+          });
+          // undici Response is compatible with fetch Response for our use case
+          response = undiciResponse as unknown as FetchResponseType;
+
+          // Mark proxy as successful (even if HTTP status is not 200, proxy itself worked)
+          this.proxyManager.markProxySuccess(proxyUrl);
+          break; // Success, exit retry loop
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          const errorMessage = lastError.message;
+
+          // Check if it's a network error (not an HTTP error response)
+          const isNetworkError =
+            errorMessage.includes('ECONNREFUSED') ||
+            errorMessage.includes('ETIMEDOUT') ||
+            errorMessage.includes('ENOTFOUND') ||
+            errorMessage.includes('ECONNRESET') ||
+            errorMessage.includes('socket hang up') ||
+            errorMessage.includes('timeout');
+
+          if (isNetworkError) {
+            // Mark proxy as failed (counts towards max failures)
+            this.proxyManager.markProxyFailed(proxyUrl, errorMessage);
+            this.logger.warn(
+              `Network error with proxy ${maskedUrl}: ${errorMessage}. Trying next proxy...`,
+            );
+            // Continue loop to try next proxy (triedProxies will prevent retrying this one)
+            continue; // Try next proxy
+          } else {
+            // For other errors, don't mark as failed (might be API issue), but still throw
+            this.logger.debug(
+              `Error with proxy ${maskedUrl} (not marking as failed): ${errorMessage}`,
+            );
+            throw error;
+          }
+        }
+      }
     } else {
+      // No proxy configured, use direct connection
       response = await fetch(urlObj.toString(), {
         method: config.method,
         headers,
