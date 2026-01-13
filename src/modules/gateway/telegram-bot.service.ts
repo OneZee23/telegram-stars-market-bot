@@ -87,6 +87,11 @@ export class TelegramBotService
         return;
       }
 
+      if (text.startsWith('/get_channel_id')) {
+        await this.botCommandHandler.handleGetChannelId(ctx);
+        return;
+      }
+
       await this.messageHandler.handleTextMessage(ctx, text);
     }
   }
