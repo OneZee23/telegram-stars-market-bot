@@ -2,6 +2,7 @@ import {
   sanitizeLogMessage,
   sanitizeLogObject,
 } from '@common/utils/log-sanitizer.util';
+import { TelegramBotConfig } from '@modules/telegram-core/telegram-bot.config';
 import {
   Injectable,
   Logger,
@@ -14,7 +15,6 @@ import { BotCommand, CallbackQuery, Message, Update } from 'telegraf/types';
 import { BotCommandHandler } from './handlers/bot-command.handler';
 import { CallbackQueryHandler } from './handlers/callback-query.handler';
 import { MessageHandler } from './handlers/message.handler';
-import { TelegramBotConfig } from './telegram-bot.config';
 import { ContextFactory } from './utils/context-factory.util';
 
 @Injectable()

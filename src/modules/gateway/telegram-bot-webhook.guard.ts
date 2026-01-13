@@ -1,3 +1,4 @@
+import { TelegramBotConfig } from '@modules/telegram-core/telegram-bot.config';
 import {
   CanActivate,
   ExecutionContext,
@@ -6,7 +7,6 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { TelegramBotConfig } from './telegram-bot.config';
 
 @Injectable()
 export class TelegramBotWebhookGuard implements CanActivate {
