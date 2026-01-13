@@ -33,10 +33,6 @@ export class ProxyManagerService {
     purchaseUrl?: string,
     expiresAt?: string,
   ): void {
-    this.logger.debug(
-      `Initializing proxy manager with ${proxyUrls?.length || 0} proxy URL(s)`,
-    );
-
     if (!proxyUrls || proxyUrls.length === 0) {
       this.logger.debug('No proxies configured, proxy manager disabled');
       this.proxies = [];
@@ -48,7 +44,6 @@ export class ProxyManagerService {
       .map((url) => url.trim())
       .filter((url) => {
         if (!url) {
-          this.logger.debug('Skipping empty proxy URL');
           return false;
         }
         if (!isValidProxyUrl(url)) {
@@ -69,27 +64,15 @@ export class ProxyManagerService {
 
     // Store purchase URL
     this.purchaseUrl = purchaseUrl;
-    if (purchaseUrl) {
-      this.logger.debug(`Proxy purchase URL configured: ${purchaseUrl}`);
-    }
 
     // Parse expiration date if provided
     if (expiresAt) {
-      this.logger.debug(
-        `Parsing expiration date: "${expiresAt}" (length: ${expiresAt.length})`,
-      );
       this.expiresAt = parseProxyExpirationDate(expiresAt);
       if (!this.expiresAt) {
         this.logger.warn(
-          `Failed to parse expiration date: "${expiresAt}". Expected format: DD.MM.YY, HH:mm (e.g., "13.04.26, 08:01")`,
-        );
-      } else {
-        this.logger.log(
-          `Proxy expiration date parsed successfully: ${this.expiresAt.toISOString()}`,
+          `Failed to parse expiration date. Expected format: DD.MM.YY, HH:mm (e.g., "13.04.26, 08:01")`,
         );
       }
-    } else {
-      this.logger.debug('No expiration date configured for proxies');
     }
 
     // Initialize health status for all proxies
