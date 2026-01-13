@@ -56,16 +56,40 @@ export class FragmentApiClientService {
    * Initialize proxy manager with configured proxies
    */
   private initializeProxyManager(): void {
+    // Log all FRAGMENT_* environment variables for debugging
+    const fragmentEnvVars = Object.keys(process.env)
+      .filter((key) => key.startsWith('FRAGMENT_'))
+      .map((key) => {
+        const value = process.env[key];
+        // Mask sensitive values (proxies contain passwords)
+        if (key === 'FRAGMENT_PROXIES' && value) {
+          const masked = value.replace(/:[^:@]*@/g, ':****@');
+          return `${key}=${masked.substring(0, 100)}${value.length > 100 ? '...' : ''}`;
+        }
+        // Don't log cookies or mnemonic fully
+        if (
+          (key === 'FRAGMENT_COOKIES' || key === 'FRAGMENT_MNEMONIC') &&
+          value
+        ) {
+          return `${key}=${value.substring(0, 20)}... (length: ${value.length})`;
+        }
+        return `${key}=${value ? `"${value.substring(0, 50)}${value.length > 50 ? '...' : ''}"` : 'undefined'}`;
+      });
+
+    this.logger.debug(
+      `FRAGMENT_* environment variables: ${fragmentEnvVars.length > 0 ? fragmentEnvVars.join(', ') : 'none found'}`,
+    );
+
     // Log raw config value for debugging
     const rawProxies = this.config.proxies;
     this.logger.debug(
-      `FRAGMENT_PROXIES config value: ${rawProxies ? `"${rawProxies}" (length: ${rawProxies.length}, type: ${typeof rawProxies})` : 'undefined/null/empty'}`,
+      `FRAGMENT_PROXIES config value: ${rawProxies ? `"${rawProxies.substring(0, 50)}..." (length: ${rawProxies.length}, type: ${typeof rawProxies})` : 'undefined/null/empty'}`,
     );
 
     // Also check environment variable directly for debugging
     const envProxies = process.env.FRAGMENT_PROXIES;
     this.logger.debug(
-      `process.env.FRAGMENT_PROXIES: ${envProxies ? `"${envProxies}" (length: ${envProxies.length})` : 'undefined/null/empty'}`,
+      `process.env.FRAGMENT_PROXIES: ${envProxies ? `"${envProxies.substring(0, 50)}..." (length: ${envProxies.length})` : 'undefined/null/empty'}`,
     );
 
     // Parse proxy URLs from config
