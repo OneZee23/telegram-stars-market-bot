@@ -26,6 +26,7 @@ export class NotificationsService {
     pricePerStar: number,
     processingTimeMs: number,
     isSelfPurchase: boolean,
+    isTestPurchase: boolean = false,
   ): Promise<void> {
     this.incrementPurchaseCount();
     const maskedUser = maskUsername(username);
@@ -33,8 +34,12 @@ export class NotificationsService {
     const processingTime = (processingTimeMs / 1000).toFixed(1);
     const purchaseCount = this.purchaseCountToday;
 
+    const title = isTestPurchase
+      ? `🎁 Бесплатный тестовый клейм!`
+      : `🎉 Новая покупка!`;
+
     const message =
-      `🎉 Новая покупка!\n\n` +
+      `${title}\n\n` +
       `⭐ Количество: ${starsAmount.toLocaleString()} Stars\n` +
       `💰 Сумма: ${priceRub.toLocaleString('ru-RU')} ₽\n` +
       `💵 Курс: ${pricePerStar.toFixed(3)} ₽/⭐ (временно захардкожен)\n` +
