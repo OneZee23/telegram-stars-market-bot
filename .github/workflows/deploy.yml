@@ -47,6 +47,7 @@ jobs:
             DB_CERT_BASE64=${{ secrets.DB_CERT_BASE64 }}
             BOT_TOKEN=${{ secrets.BOT_TOKEN }}
             TELEGRAM_WEBHOOK_API_KEY=${{ secrets.TELEGRAM_WEBHOOK_API_KEY }}
+            TELEGRAM_MONITORING_CHANNEL_ID=${{ secrets.TELEGRAM_MONITORING_CHANNEL_ID }}
             PUBLIC_URL=${{ secrets.PUBLIC_URL }}
             FRAGMENT_COOKIES=${{ secrets.FRAGMENT_COOKIES }}
             FRAGMENT_API_HASH=${{ secrets.FRAGMENT_API_HASH }}

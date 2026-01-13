@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, import/no-extraneous-dependencies, @typescript-eslint/no-require-imports */
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
@@ -107,6 +108,8 @@ export class StarsPurchaseService {
 
   private readonly TRANSACTION_WAIT_TIME_MS = 3000;
 
+  private readonly PRICE_PER_STAR_RUB = 1.244;
+
   // Simple flag to track if a purchase is currently being processed
   // TODO: Replace with RabbitMQ or similar message queue for production
   private isProcessingPurchase = false;
@@ -115,6 +118,7 @@ export class StarsPurchaseService {
     private readonly apiClient: FragmentApiClientService,
     private readonly whitelistService: WhitelistService,
     private readonly config: FragmentConfig,
+    private readonly notificationsService: NotificationsService,
     @InjectEntityManager()
     private readonly em: EntityManager,
   ) {}
@@ -148,10 +152,9 @@ export class StarsPurchaseService {
     // Mark as processing
     this.isProcessingPurchase = true;
 
-    // Get repository for StarsPurchaseEntity
+    const startTime = Date.now();
     const purchaseRepo = this.em.getRepository(StarsPurchaseEntity);
 
-    // Create purchase record in DB
     const purchaseRecord = purchaseRepo.create({
       userId,
       recipientUsername: recipientUsername.replace('@', ''),
@@ -339,8 +342,21 @@ export class StarsPurchaseService {
         );
       }
 
+      const processingTime = Date.now() - startTime;
+      const priceRub = amount * this.PRICE_PER_STAR_RUB;
+
       this.logger.log(
         `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
+      );
+
+      await this.notificationsService.notifyPurchaseSuccess(
+        userId,
+        recipientUsername,
+        amount,
+        priceRub,
+        this.PRICE_PER_STAR_RUB,
+        processingTime,
+        false,
       );
 
       return {
@@ -366,6 +382,8 @@ export class StarsPurchaseService {
       this.logger.error(
         `Stars purchase failed for user ${userId}: ${errorMessage}`,
       );
+
+      await this.notificationsService.notifyError('Fragment API', errorMessage);
 
       return {
         success: false,
