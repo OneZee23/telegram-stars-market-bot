@@ -136,6 +136,7 @@ export class StarsPurchaseService {
     recipientUsername: string,
     amount: number,
     hideSender: number = 0,
+    isTestPurchase: boolean = false,
   ): Promise<PurchaseResult> {
     // Check if a purchase is currently being processed
     // TODO: Replace with RabbitMQ queue status check for production
@@ -357,6 +358,7 @@ export class StarsPurchaseService {
         this.PRICE_PER_STAR_RUB,
         processingTime,
         false,
+        isTestPurchase,
       );
 
       return {
@@ -447,6 +449,8 @@ export class StarsPurchaseService {
       userId,
       recipientUsername,
       TEST_STARS_AMOUNT,
+      0,
+      true, // isTestPurchase
     );
 
     // 4. If purchase was successful, increment test claims
