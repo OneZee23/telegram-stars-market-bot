@@ -4,10 +4,12 @@ import { FragmentModule } from '@modules/fragment/fragment.module';
 import { TelegramBotModule } from '@modules/gateway/telegram-bot.module';
 import { UserModule } from '@modules/user/user.module';
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     // Infra
+    ScheduleModule.forRoot(),
     DatabaseModule,
     WebserverModule,
 

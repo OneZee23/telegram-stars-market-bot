@@ -78,7 +78,7 @@ FRAGMENT_API_HASH=58401248c484690e80
 
 - `TONCENTER_RPC_URL` - URL для TON Center RPC (по умолчанию: `https://toncenter.com/api/v2/jsonRPC`)
 - `TONCENTER_RPC_API_KEY` - API ключ для TON Center (опционально)
-- `FRAGMENT_PROXY` - HTTP прокси для обхода Cloudflare (опционально, см. [PROXY_SETUP.md](./PROXY_SETUP.md))
+- `FRAGMENT_PROXIES` - HTTP прокси для обхода Cloudflare (опционально, см. [PROXY_SETUP.md](./PROXY_SETUP.md))
 
 ## 📝 Описание переменных
 
