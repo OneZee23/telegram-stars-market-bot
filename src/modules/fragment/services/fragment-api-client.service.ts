@@ -56,9 +56,21 @@ export class FragmentApiClientService {
    * Initialize proxy manager with configured proxies
    */
   private initializeProxyManager(): void {
+    // Log raw config value for debugging
+    const rawProxies = this.config.proxies;
+    this.logger.debug(
+      `FRAGMENT_PROXIES config value: ${rawProxies ? `"${rawProxies}" (length: ${rawProxies.length}, type: ${typeof rawProxies})` : 'undefined/null/empty'}`,
+    );
+
+    // Also check environment variable directly for debugging
+    const envProxies = process.env.FRAGMENT_PROXIES;
+    this.logger.debug(
+      `process.env.FRAGMENT_PROXIES: ${envProxies ? `"${envProxies}" (length: ${envProxies.length})` : 'undefined/null/empty'}`,
+    );
+
     // Parse proxy URLs from config
-    if (!this.config.proxies) {
-      this.logger.debug('FRAGMENT_PROXIES not configured');
+    if (!rawProxies) {
+      this.logger.debug('FRAGMENT_PROXIES not configured in config object');
       this.proxyManager.initialize(
         [],
         this.config.proxyPurchaseUrl,
@@ -68,9 +80,9 @@ export class FragmentApiClientService {
     }
 
     this.logger.debug(
-      `Parsing proxies from config (length: ${this.config.proxies.length})`,
+      `Parsing proxies from config (length: ${rawProxies.length})`,
     );
-    const proxyUrls = this.parseProxyUrls(this.config.proxies);
+    const proxyUrls = this.parseProxyUrls(rawProxies);
     this.logger.debug(
       `Parsed ${proxyUrls.length} proxy URL(s): ${proxyUrls.map((url) => this.maskProxyUrl(url)).join(', ')}`,
     );
