@@ -127,6 +127,13 @@ Telegram Stars Shop — это Telegram бот, который покупает 
    FRAGMENT_MNEMONIC=word1 word2 ... word24
    TONCENTER_RPC_URL=https://toncenter.com/api/v2/jsonRPC
    TONCENTER_RPC_API_KEY=...
+
+   # DEX config (для свопа USDT → TON)
+   DEX_PROVIDER=stonfi
+   USDT_JETTON_ADDRESS=EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs
+   SWAP_SLIPPAGE_TOLERANCE=1
+   SWAP_RESERVE_PERCENT=5
+   MIN_TON_FOR_FEES=100000000
    ```
 
 3. **Запустить тесты:**
