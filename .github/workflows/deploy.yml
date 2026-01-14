@@ -57,6 +57,11 @@ jobs:
             FRAGMENT_PROXIES=${{ secrets.FRAGMENT_PROXIES }}
             FRAGMENT_PROXIES_EXPIRES_AT=${{ secrets.FRAGMENT_PROXIES_EXPIRES_AT }}
             FRAGMENT_PROXY_PURCHASE_URL=${{ secrets.FRAGMENT_PROXY_PURCHASE_URL }}
+            DEX_PROVIDER=${{ secrets.DEX_PROVIDER || 'stonfi' }}
+            USDT_JETTON_ADDRESS=${{ secrets.USDT_JETTON_ADDRESS }}
+            SWAP_SLIPPAGE_TOLERANCE=${{ secrets.SWAP_SLIPPAGE_TOLERANCE || '1' }}
+            SWAP_RESERVE_PERCENT=${{ secrets.SWAP_RESERVE_PERCENT || '5' }}
+            MIN_TON_FOR_FEES=${{ secrets.MIN_TON_FOR_FEES || '100000000' }}
             EOF
             chmod 600 /opt/telegram-stars-market-bot/.env
 

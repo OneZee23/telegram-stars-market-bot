@@ -79,6 +79,16 @@ FRAGMENT_API_HASH=58401248c484690e80
 - `TONCENTER_RPC_URL` - URL для TON Center RPC (по умолчанию: `https://toncenter.com/api/v2/jsonRPC`)
 - `TONCENTER_RPC_API_KEY` - API ключ для TON Center (опционально)
 - `FRAGMENT_PROXIES` - HTTP прокси для обхода Cloudflare (опционально, см. [PROXY_SETUP.md](./PROXY_SETUP.md))
+- `FRAGMENT_PROXIES_EXPIRES_AT` - Дата истечения прокси (формат: DD.MM.YY, HH:mm)
+- `FRAGMENT_PROXY_PURCHASE_URL` - URL для покупки прокси (для уведомлений)
+
+**DEX и своп переменные (опционально):**
+
+- `DEX_PROVIDER` - Провайдер DEX для свопа (по умолчанию: `stonfi`)
+- `USDT_JETTON_ADDRESS` - Адрес USDT jetton в TON (по умолчанию: `EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs`)
+- `SWAP_SLIPPAGE_TOLERANCE` - Допустимый slippage для свопа в процентах (по умолчанию: `1`)
+- `SWAP_RESERVE_PERCENT` - Процент резерва к требуемой сумме TON (по умолчанию: `5`)
+- `MIN_TON_FOR_FEES` - Минимальный TON для комиссий в nanoTON (по умолчанию: `100000000` = 0.1 TON)
 
 ## 📝 Описание переменных
 
