@@ -8,101 +8,26 @@ import { TonClient } from '@ton/ton';
 import { mnemonicToPrivateKey } from 'ton-crypto';
 import * as TonWeb from 'tonweb';
 import * as nacl from 'tweetnacl';
+import {
+  SwapQuote,
+  SwapResult,
+  TonWebExtended,
+  TonWebHttpProvider,
+  TonWebInstance,
+} from '../interfaces';
 import { TonConfig } from '../ton.config';
-
-export interface SwapResult {
-  success: boolean;
-  txHash?: string;
-  usdtAmount?: string;
-  tonAmount?: string;
-  error?: string;
-}
-
-export interface SwapQuote {
-  usdtAmount: string;
-  tonAmount: string;
-  minTonAmount: string;
-  rate: number;
-}
-
-interface TonWebExtended {
-  HttpProvider: new (
-    url: string,
-    options?: { apiKey?: string },
-  ) => HttpProvider;
-  utils: {
-    Address: new (address: string) => Address;
-    toNano: (amount: string) => string;
-    fromNano: (amount: string) => string;
-    bytesToBase64: (bytes: Uint8Array) => string;
-    base64ToBytes: (base64: string) => Uint8Array;
-  };
-  boc: {
-    Cell: new () => Cell;
-    CellBuilder: new () => CellBuilder;
-  };
-  wallet: {
-    all: {
-      v3R2: new (
-        provider: HttpProvider,
-        options: { publicKey: Uint8Array },
-      ) => Wallet;
-    };
-  };
-  Contract: {
-    createOutMsg: (
-      address: string,
-      amount: string,
-      payload: any,
-      stateInit: any,
-    ) => any;
-    createExternalMessageHeader: (address: Address) => any;
-    createCommonMsgInfo: (header: any, stateInit: any, body: Cell) => Cell;
-  };
-}
-
-interface HttpProvider {
-  getAddressInformation: (address: string) => Promise<any>;
-  sendBoc: (boc: string) => Promise<string | any>;
-  call2: (address: string, method: string, params: any[]) => Promise<any>;
-}
-
-interface Address {
-  toString: (
-    bounceable: boolean,
-    testOnly: boolean,
-    urlSafe: boolean,
-    workchain?: number,
-  ) => string;
-}
-
-interface Cell {
-  toBoc: () => Promise<Uint8Array>;
-  bits: {
-    writeUint8: (value: number) => void;
-    writeAddress: (address: Address) => CellBuilder;
-    writeBytes: (bytes: Uint8Array) => void;
-  };
-  refs: any[];
-  writeCell: (cell: Cell) => void;
-}
-
-interface CellBuilder {
-  storeUint: (value: number | string, bitLength: number) => CellBuilder;
-  storeAddress: (address: Address) => CellBuilder;
-  storeCoins: (amount: string) => CellBuilder;
-  storeRef: (cell: Cell) => CellBuilder;
-  endCell: () => Cell;
-}
-
-interface Wallet {
-  getAddress: () => Promise<Address>;
-  methods: {
-    seqno: () => { call: () => Promise<number> };
-  };
-  createSigningMessage: (seqno: number) => any;
-  createStateInit: () => Promise<{ stateInit: Cell }>;
-}
+import {
+  extractTxHash,
+  fromTonUnits,
+  fromUsdtUnits,
+  getBaseUrl,
+  parseAddressFromCall2Result,
+  toTonUnits,
+  toUsdtUnits,
+  USDT_DECIMALS,
+  validateAmount,
+  waitForTransactionConfirmation,
+} from '../utils';
 
 @Injectable()
 export class DexSwapService {
@@ -120,10 +45,6 @@ export class DexSwapService {
 
   private readonly DEFAULT_MIN_TON_FOR_FEES = '100000000';
 
-  private readonly USDT_DECIMALS = 6;
-
-  private readonly TON_DECIMALS = 9;
-
   constructor(private readonly config: TonConfig) {
     this.stonApiClient = new StonApiClient();
     this.tonClient = new TonClient({
@@ -135,7 +56,7 @@ export class DexSwapService {
 
   async getTonBalance(walletAddress: string): Promise<string> {
     try {
-      const baseUrl = this.getBaseUrl();
+      const baseUrl = getBaseUrl(this.config.toncenterRpcUrl);
       const url = new URL(`${baseUrl}/getAddressInformation`);
       url.searchParams.append('address', walletAddress);
       if (this.config.toncenterApiKey) {
@@ -182,17 +103,26 @@ export class DexSwapService {
         return '0';
       }
 
-      const JettonWalletClass = (TonWeb as any).token?.jetton?.JettonWallet;
+      const JettonWalletClass = (
+        TonWeb as { token?: { jetton?: { JettonWallet: unknown } } }
+      ).token?.jetton?.JettonWallet;
       if (!JettonWalletClass) {
         return '0';
       }
 
-      const wallet = new JettonWalletClass(tonWebInstance.provider, {
+      const wallet = new (JettonWalletClass as new (
+        provider: TonWebHttpProvider,
+        options: { address: string },
+      ) => {
+        getData: () => Promise<{
+          balance: { toString: (radix: number) => string };
+        }>;
+      })(tonWebInstance.provider, {
         address: jettonWalletAddress,
       });
       const walletData = await wallet.getData();
       const balance = walletData.balance.toString(10);
-      return (parseFloat(balance) / 10 ** this.USDT_DECIMALS).toString();
+      return (parseFloat(balance) / 10 ** USDT_DECIMALS).toString();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Failed to get USDT balance: ${message}`);
@@ -202,8 +132,8 @@ export class DexSwapService {
 
   async getSwapQuote(usdtAmount: string): Promise<SwapQuote | null> {
     try {
-      const amount = this.validateAmount(usdtAmount, 'USDT');
-      const usdtUnits = this.toUsdtUnits(amount);
+      const amount = validateAmount(usdtAmount, 'USDT');
+      const usdtUnits = toUsdtUnits(amount);
       const slippageTolerance = this.getSlippageTolerance();
 
       if (usdtUnits < 1000000) {
@@ -223,7 +153,7 @@ export class DexSwapService {
         throw new Error('Invalid simulation result from STON.fi');
       }
 
-      const tonAmount = this.fromTonUnits(simulationResult.minAskUnits);
+      const tonAmount = fromTonUnits(simulationResult.minAskUnits);
 
       return {
         usdtAmount,
@@ -240,8 +170,8 @@ export class DexSwapService {
 
   async calculateRequiredUsdt(tonAmount: string): Promise<string | null> {
     try {
-      const amount = this.validateAmount(tonAmount, 'TON');
-      const tonUnits = this.toTonUnits(amount);
+      const amount = validateAmount(tonAmount, 'TON');
+      const tonUnits = toTonUnits(amount);
       const slippageTolerance = this.getSlippageTolerance();
 
       if (tonUnits < 100000000) {
@@ -261,7 +191,7 @@ export class DexSwapService {
         throw new Error('Invalid simulation result from STON.fi');
       }
 
-      return this.fromUsdtUnits(simulationResult.minAskUnits);
+      return fromUsdtUnits(simulationResult.minAskUnits);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Failed to calculate required USDT: ${message}`);
@@ -278,7 +208,7 @@ export class DexSwapService {
     try {
       this.logger.log(`Swapping ${usdtAmount} USDT → min ${minTonAmount} TON`);
 
-      const usdtUnits = this.toUsdtUnits(parseFloat(usdtAmount));
+      const usdtUnits = toUsdtUnits(parseFloat(usdtAmount));
       const slippageTolerance = this.getSlippageTolerance();
 
       const simulationResult = await this.stonApiClient.simulateSwap({
@@ -308,22 +238,27 @@ export class DexSwapService {
 
       const { httpProvider, tonWebInstance } = this.createTonWebInstance();
       const signedTx = await this.signTransactionFromParams(
-        txParams,
+        txParams as unknown as {
+          messages?: Array<{
+            address: string;
+            amount: string;
+            payload?: string;
+          }>;
+        },
         privateKey,
-        walletAddress,
         httpProvider,
         tonWebInstance,
       );
 
       const txHash = await tonWebInstance.provider.sendBoc(signedTx);
-      const hash = this.extractTxHash(txHash);
+      const hash = extractTxHash(txHash);
 
       if (!hash || hash.toLowerCase().includes('error')) {
         throw new Error(`Transaction failed: ${hash || 'unknown error'}`);
       }
 
       this.logger.log(`Swap transaction sent. TX Hash: ${hash}`);
-      await this.waitForTransactionConfirmation();
+      await waitForTransactionConfirmation();
 
       return {
         success: true,
@@ -397,7 +332,7 @@ export class DexSwapService {
   private async getJettonWalletAddress(
     account: string,
     jettonMasterAddress: string,
-    tonWebInstance: any,
+    tonWebInstance: TonWebInstance,
   ): Promise<string | null> {
     try {
       const cell = new tonWebInstance.boc.Cell();
@@ -410,10 +345,7 @@ export class DexSwapService {
         [['tvm.Slice', slice]],
       );
 
-      const address = await this.parseAddressFromCall2Result(
-        result,
-        tonWebInstance,
-      );
+      const address = await parseAddressFromCall2Result(result, tonWebInstance);
       if (!address) {
         return null;
       }
@@ -422,7 +354,7 @@ export class DexSwapService {
         true,
         true,
         true,
-        false,
+        0,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -431,85 +363,17 @@ export class DexSwapService {
     }
   }
 
-  private async parseAddressFromCall2Result(
-    result: any,
-    tonWebInstance: any,
-    depth = 0,
-  ): Promise<string | null> {
-    if (depth > 3) {
-      return null;
-    }
-
-    if (!result) {
-      return null;
-    }
-
-    if (result.bits && result.refs !== undefined) {
-      try {
-        if (result.beginParse && typeof result.beginParse === 'function') {
-          const slice = result.beginParse();
-          if (slice?.loadAddress && typeof slice.loadAddress === 'function') {
-            const address = slice.loadAddress();
-            if (address) {
-              return address.toString(true, true, true, false);
-            }
-          }
-        }
-      } catch {
-        return null;
-      }
-    }
-
-    if (
-      result.stack &&
-      Array.isArray(result.stack) &&
-      result.stack.length > 0
-    ) {
-      const [firstItem] = result.stack;
-
-      if (typeof firstItem === 'string') {
-        return firstItem;
-      }
-
-      if (Array.isArray(firstItem) && firstItem.length >= 2) {
-        return firstItem[1];
-      }
-
-      if (typeof firstItem === 'object' && firstItem !== null) {
-        if (firstItem.cell) {
-          try {
-            const cellBytes = tonWebInstance.utils.base64ToBytes(
-              firstItem.cell,
-            );
-            const addressCell = tonWebInstance.boc.Cell.oneFromBoc(cellBytes);
-            const address = addressCell.bits.readAddress();
-            if (address) {
-              return address.toString(true, true, true, false);
-            }
-          } catch {
-            return null;
-          }
-        }
-      }
-    }
-
-    if (result.result?.stack) {
-      return this.parseAddressFromCall2Result(
-        result.result,
-        tonWebInstance,
-        depth + 1,
-      );
-    }
-
-    return null;
-  }
-
   private async signTransactionFromParams(
-    txParams: any,
+    txParams: {
+      messages?: Array<{
+        address: string;
+        amount: string;
+        payload?: string;
+      }>;
+    },
     privateKey: Uint8Array,
-    walletAddress: string,
-    httpProvider: HttpProvider,
-    tonWebInstance: any,
+    httpProvider: TonWebHttpProvider,
+    tonWebInstance: TonWebInstance,
   ): Promise<string> {
     const TonWebTyped = TonWeb as unknown as TonWebExtended;
     const mnemonicArray = this.config.mnemonic.trim().split(/\s+/);
@@ -563,46 +427,18 @@ export class DexSwapService {
   }
 
   private createTonWebInstance(): {
-    httpProvider: HttpProvider;
-    tonWebInstance: any;
+    httpProvider: TonWebHttpProvider;
+    tonWebInstance: TonWebInstance;
   } {
     const TonWebTyped = TonWeb as unknown as TonWebExtended;
     const httpProvider = new TonWebTyped.HttpProvider(
       this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
       { apiKey: this.config.toncenterApiKey },
     );
-    const tonWebInstance = new (TonWeb as any)(httpProvider);
+    const tonWebInstance = new (TonWeb as unknown as new (
+      provider: TonWebHttpProvider,
+    ) => TonWebInstance)(httpProvider);
     return { httpProvider, tonWebInstance };
-  }
-
-  private getBaseUrl(): string {
-    return this.config.toncenterRpcUrl
-      ? this.config.toncenterRpcUrl.replace('/jsonRPC', '')
-      : 'https://toncenter.com/api/v2';
-  }
-
-  private validateAmount(amount: string, currency: string): number {
-    const value = parseFloat(amount);
-    if (value <= 0 || Number.isNaN(value)) {
-      throw new Error(`Invalid ${currency} amount: ${amount}`);
-    }
-    return value;
-  }
-
-  private toUsdtUnits(amount: number): number {
-    return Math.floor(amount * 10 ** this.USDT_DECIMALS);
-  }
-
-  private fromUsdtUnits(units: string): string {
-    return (parseFloat(units) / 10 ** this.USDT_DECIMALS).toString();
-  }
-
-  private toTonUnits(amount: number): number {
-    return Math.floor(amount * 10 ** this.TON_DECIMALS);
-  }
-
-  private fromTonUnits(units: string): string {
-    return (parseFloat(units) / 10 ** this.TON_DECIMALS).toString();
   }
 
   private getSlippageTolerance(): number {
@@ -615,25 +451,5 @@ export class DexSwapService {
     const requiredWithReserve = requiredTon * (1 + reservePercent / 100);
     const minTonForFees = parseFloat(this.getMinTonForFees()) / 1e9;
     return requiredWithReserve + minTonForFees;
-  }
-
-  private extractTxHash(txHash: any): string | null {
-    if (typeof txHash === 'string') {
-      return txHash;
-    }
-    return (
-      (txHash as any)?.hash ||
-      (txHash as any)?.tx_hash ||
-      (txHash as any)?.transaction_id ||
-      null
-    );
-  }
-
-  private async waitForTransactionConfirmation(
-    maxWaitTime: number = 10000,
-  ): Promise<void> {
-    await new Promise<void>((resolve) => {
-      setTimeout(() => resolve(), maxWaitTime);
-    });
   }
 }
