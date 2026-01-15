@@ -35,6 +35,7 @@ export interface Translations {
     balanceCheckFailed: string;
     purchaseFailedInsufficientFunds: string;
     purchaseFailedConfirmation: string;
+    purchaseFailedTransactionNotSent: string;
   };
   errors: {
     usernameRequired: string;
@@ -118,6 +119,10 @@ export const translations: Record<string, Translations> = {
       purchaseFailedConfirmation:
         '❌ Ошибка подтверждения транзакции\n\n' +
         'Пожалуйста, напишите в поддержку: @onezee123\n\n' +
+        'Также проверьте канал с отчетами для информации о вашем заказе.',
+      purchaseFailedTransactionNotSent:
+        '❌ Ошибка отправки транзакции\n\n' +
+        'Не удалось отправить транзакцию в блокчейн. Пожалуйста, попробуйте еще раз или напишите в поддержку: @onezee123\n\n' +
         'Также проверьте канал с отчетами для информации о вашем заказе.',
     },
     errors: {
@@ -206,6 +211,10 @@ export const translations: Record<string, Translations> = {
       purchaseFailedConfirmation:
         '❌ Transaction confirmation error\n\n' +
         'Please contact support: @onezee123\n\n' +
+        'Also check the report channel for information about your order.',
+      purchaseFailedTransactionNotSent:
+        '❌ Transaction send error\n\n' +
+        'Failed to send transaction to blockchain. Please try again or contact support: @onezee123\n\n' +
         'Also check the report channel for information about your order.',
     },
     errors: {

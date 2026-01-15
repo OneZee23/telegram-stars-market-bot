@@ -190,18 +190,37 @@ export class TransactionService {
         },
       );
 
+      this.logger.debug('Calling httpProvider.sendBoc...');
       const result = await httpProvider.sendBoc(signedBoc);
+      this.logger.debug(
+        `sendBoc result type: ${typeof result}, value: ${JSON.stringify(result)}`,
+      );
 
       let txHash: string | undefined;
 
       if (typeof result === 'string') {
         txHash = result;
+        this.logger.debug(`Extracted txHash from string: ${txHash}`);
       } else if (typeof result === 'object' && result !== null) {
         txHash =
           (result as any).hash ||
           (result as any).tx_hash ||
           (result as any).transaction_id ||
           (result as any).result;
+        this.logger.debug(
+          `Extracted txHash from object: ${txHash}, full result: ${JSON.stringify(result)}`,
+        );
+      } else {
+        this.logger.warn(
+          `Unexpected result type from sendBoc: ${typeof result}, value: ${result}`,
+        );
+      }
+
+      if (!txHash) {
+        this.logger.error(
+          `Failed to extract transaction hash from API response. Result: ${JSON.stringify(result)}`,
+        );
+        return undefined;
       }
 
       if (
@@ -219,12 +238,14 @@ export class TransactionService {
         return undefined;
       }
 
+      this.logger.log(`Transaction sent successfully. TX Hash: ${txHash}`);
       return txHash;
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Failed to send transaction to blockchain: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
       );
       return undefined;
     }
