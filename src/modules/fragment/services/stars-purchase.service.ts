@@ -222,26 +222,18 @@ export class StarsPurchaseService {
         !txHash.toLowerCase().includes('limit') &&
         !txHash.toLowerCase().includes('exceed');
 
-      if (isValidTxHash) {
-        this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
-      } else {
-        this.logger.warn(
-          `Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
-        );
+      if (!isValidTxHash) {
+        const errorMsg = `Transaction was not sent to blockchain. TX Hash: ${txHash || 'undefined'}. Cannot proceed with Fragment confirmation.`;
+        this.logger.error(errorMsg);
+        throw new Error('TRANSACTION_NOT_SENT');
       }
+
+      this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
 
       // Wait for transaction to be processed
       await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
 
       // 11. Confirm transaction with Fragment
-      // Note: Even if txHash is invalid (rate limit), we still try to confirm
-      // Fragment may have received the transaction despite the API error response
-      if (!isValidTxHash) {
-        this.logger.warn(
-          `Transaction hash is invalid (${txHash || 'undefined'}), but proceeding with Fragment confirmation. This may indicate a rate limit issue.`,
-        );
-      }
-
       this.logger.debug('Confirming transaction with Fragment...');
       const confirmed = await this.apiClient.confirmReq(
         buyRequest.req_id,
@@ -261,25 +253,18 @@ export class StarsPurchaseService {
       // Update purchase record in DB
       purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
       purchaseRecord.fragmentRequestId = buyRequest.req_id;
-      purchaseRecord.txHash = isValidTxHash ? txHash : undefined;
+      purchaseRecord.txHash = txHash;
       await purchaseRepo.save(purchaseRecord);
-
-      if (!isValidTxHash) {
-        this.logger.error(
-          `Purchase marked as completed but transaction may not have been sent to blockchain. Fragment request ID: ${buyRequest.req_id}. Stars may not arrive. Check Fragment dashboard and user account.`,
-        );
-      }
 
       const processingTime = Date.now() - startTime;
       const priceRub = amount * this.PRICE_PER_STAR_RUB;
 
       this.logger.log(
-        `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
+        `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash}`,
       );
 
-      if (userId === ADMIN_USER_ID && isTestPurchase) {
-        await this.notificationsService.notifyAdminTestClaim();
-      } else {
+      // Skip notification for admin test purchases - it will be handled in purchaseTestStars
+      if (!(userId === ADMIN_USER_ID && isTestPurchase)) {
         await this.notificationsService.notifyPurchaseSuccess(
           userId,
           recipientUsername,
@@ -323,6 +308,8 @@ export class StarsPurchaseService {
         userFriendlyError = 'swap_failed_insufficient_ton';
       } else if (errorMessage === 'CONFIRMATION_FAILED') {
         userFriendlyError = 'confirmation_failed';
+      } else if (errorMessage === 'TRANSACTION_NOT_SENT') {
+        userFriendlyError = 'transaction_not_sent';
       }
 
       await this.notificationsService.notifyError('Fragment API', errorMessage);

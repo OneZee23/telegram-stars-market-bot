@@ -272,6 +272,8 @@ export class CallbackQueryHandler {
         errorText = t.buyStars.purchaseFailedInsufficientFunds;
       } else if (result.error === 'confirmation_failed') {
         errorText = t.buyStars.purchaseFailedConfirmation;
+      } else if (result.error === 'transaction_not_sent') {
+        errorText = t.buyStars.purchaseFailedTransactionNotSent;
       } else {
         errorText = t.buyStars.purchaseError.replace(
           '{error}',
