@@ -25,32 +25,6 @@ export class FragmentConfig extends ConfigFragment {
   public readonly apiHash: string;
 
   /**
-   * TON wallet mnemonic (24 words)
-   * Used for signing transactions
-   */
-  @IsString()
-  @IsNotEmpty()
-  @UseEnv('FRAGMENT_MNEMONIC')
-  public readonly mnemonic: string;
-
-  /**
-   * TON Center RPC URL
-   * Default: https://toncenter.com/api/v2/jsonRPC
-   */
-  @IsString()
-  @IsOptional()
-  @UseEnv('TONCENTER_RPC_URL')
-  public readonly toncenterRpcUrl?: string;
-
-  /**
-   * TON Center API key
-   */
-  @IsString()
-  @IsOptional()
-  @UseEnv('TONCENTER_RPC_API_KEY')
-  public readonly toncenterApiKey?: string;
-
-  /**
    * HTTP/HTTPS proxy(ies) for Fragment API requests
    * Format: http://user:pass@host:port or http://host:port
    * For multiple proxies, separate with comma or newline

@@ -191,7 +191,6 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
     userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
   ): Promise<void> {
-    // Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
@@ -221,14 +220,29 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show processing message
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.buyStars.checkingBalance,
+    );
+
+    const balanceCheck =
+      await this.starsPurchaseService.checkBalanceBeforePurchase(50);
+    if (!balanceCheck.canPurchase) {
+      const errorText =
+        balanceCheck.error === 'insufficient_balance'
+          ? t.buyStars.insufficientBalance
+          : t.buyStars.balanceCheckFailed;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
     await this.messageManagementService.editMessage(
       ctx,
       userId,
       t.buyStars.processing,
     );
 
-    // Purchase 50 test stars
     this.logger.log(
       `User ${userId} (@${username}) initiated test purchase of 50 stars`,
     );
@@ -238,17 +252,22 @@ export class CallbackQueryHandler {
     );
 
     if (result.success) {
-      // Success message with instructions
       const successText = t.buyStars.testPurchaseSuccess
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
 
       await this.messageManagementService.editMessage(ctx, userId, successText);
     } else {
-      // Error message
       let errorText: string;
       if (result.error === 'QUEUE_BUSY') {
         errorText = t.buyStars.queueBusy;
+      } else if (
+        result.error === 'insufficient_funds' ||
+        result.error === 'swap_failed_insufficient_ton'
+      ) {
+        errorText = t.buyStars.purchaseFailedInsufficientFunds;
+      } else if (result.error === 'confirmation_failed') {
+        errorText = t.buyStars.purchaseFailedConfirmation;
       } else {
         errorText = t.buyStars.purchaseError.replace(
           '{error}',
