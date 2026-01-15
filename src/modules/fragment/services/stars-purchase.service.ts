@@ -1,3 +1,4 @@
+import { ADMIN_USER_ID } from '@common/constants';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { DexSwapService } from '@modules/ton/services/dex-swap.service';
 import { TransactionService } from '@modules/ton/services/transaction.service';
@@ -271,7 +272,6 @@ export class StarsPurchaseService {
 
       const processingTime = Date.now() - startTime;
       const priceRub = amount * this.PRICE_PER_STAR_RUB;
-      const ADMIN_USER_ID = '498124936';
 
       this.logger.log(
         `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
@@ -394,7 +394,6 @@ export class StarsPurchaseService {
   ): Promise<PurchaseResult> {
     const TEST_STARS_AMOUNT = 50;
     const MAX_TEST_CLAIMS = 1;
-    const ADMIN_USER_ID = '498124936';
 
     // 1. Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
@@ -428,8 +427,8 @@ export class StarsPurchaseService {
       true, // isTestPurchase
     );
 
-    // 4. If purchase was successful, increment test claims
-    if (result.success) {
+    // 4. If purchase was successful, increment test claims (skip for admin)
+    if (result.success && userId !== ADMIN_USER_ID) {
       await this.whitelistService.incrementTestClaims(userId);
     }
 

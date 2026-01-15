@@ -1,3 +1,4 @@
+import { ADMIN_USER_ID } from '@common/constants';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
@@ -154,8 +155,11 @@ export class CallbackQueryHandler {
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
 
-    if (isWhitelisted && canClaim) {
-      // For whitelisted users: show only 50 stars button
+    // Admin can always claim, regardless of previous claims
+    const isAdmin = userId === ADMIN_USER_ID;
+
+    if (isWhitelisted && (canClaim || isAdmin)) {
+      // For whitelisted users (or admin): show only 50 stars button
       const text = t.buyStars.testModeSelectAmount;
 
       const keyboard = KeyboardBuilder.createInlineKeyboard([
@@ -169,8 +173,8 @@ export class CallbackQueryHandler {
         text,
         keyboard,
       );
-    } else if (isWhitelisted && !canClaim) {
-      // User already claimed test stars
+    } else if (isWhitelisted && !canClaim && !isAdmin) {
+      // User already claimed test stars (but not admin)
       const message = t.buyStars.alreadyClaimed
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
