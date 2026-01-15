@@ -271,21 +271,26 @@ export class StarsPurchaseService {
 
       const processingTime = Date.now() - startTime;
       const priceRub = amount * this.PRICE_PER_STAR_RUB;
+      const ADMIN_USER_ID = '498124936';
 
       this.logger.log(
         `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
       );
 
-      await this.notificationsService.notifyPurchaseSuccess(
-        userId,
-        recipientUsername,
-        amount,
-        priceRub,
-        this.PRICE_PER_STAR_RUB,
-        processingTime,
-        false,
-        isTestPurchase,
-      );
+      if (userId === ADMIN_USER_ID && isTestPurchase) {
+        await this.notificationsService.notifyAdminTestClaim();
+      } else {
+        await this.notificationsService.notifyPurchaseSuccess(
+          userId,
+          recipientUsername,
+          amount,
+          priceRub,
+          this.PRICE_PER_STAR_RUB,
+          processingTime,
+          false,
+          isTestPurchase,
+        );
+      }
 
       return {
         success: true,
@@ -389,6 +394,7 @@ export class StarsPurchaseService {
   ): Promise<PurchaseResult> {
     const TEST_STARS_AMOUNT = 50;
     const MAX_TEST_CLAIMS = 1;
+    const ADMIN_USER_ID = '498124936';
 
     // 1. Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
@@ -399,16 +405,18 @@ export class StarsPurchaseService {
       };
     }
 
-    // 2. Check if user can claim test stars
-    const canClaim = await this.whitelistService.canClaimTestStars(
-      userId,
-      MAX_TEST_CLAIMS,
-    );
-    if (!canClaim) {
-      return {
-        success: false,
-        error: 'User has already claimed test stars',
-      };
+    // 2. Check if user can claim test stars (skip for admin user)
+    if (userId !== ADMIN_USER_ID) {
+      const canClaim = await this.whitelistService.canClaimTestStars(
+        userId,
+        MAX_TEST_CLAIMS,
+      );
+      if (!canClaim) {
+        return {
+          success: false,
+          error: 'User has already claimed test stars',
+        };
+      }
     }
 
     // 3. Purchase stars
@@ -423,6 +431,11 @@ export class StarsPurchaseService {
     // 4. If purchase was successful, increment test claims
     if (result.success) {
       await this.whitelistService.incrementTestClaims(userId);
+    }
+
+    // 5. Notify about admin test claim
+    if (result.success && userId === ADMIN_USER_ID) {
+      await this.notificationsService.notifyAdminTestClaim();
     }
 
     return result;
