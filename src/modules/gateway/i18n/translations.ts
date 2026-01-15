@@ -30,6 +30,11 @@ export interface Translations {
     alreadyClaimed: string;
     queueBusy: string;
     only50StarsAvailable: string;
+    checkingBalance: string;
+    insufficientBalance: string;
+    balanceCheckFailed: string;
+    purchaseFailedInsufficientFunds: string;
+    purchaseFailedConfirmation: string;
   };
   errors: {
     usernameRequired: string;
@@ -98,6 +103,22 @@ export const translations: Record<string, Translations> = {
         '🎁 Тестовый режим\n\n' +
         'В данный момент для тестирования доступна только покупка 50 звезд.\n\n' +
         'Вернитесь назад и выберите "50 ⭐" для получения бесплатных тестовых звезд.',
+      checkingBalance: '⏳ Проверка баланса...',
+      insufficientBalance:
+        '❌ Недостаточно средств\n\n' +
+        'В данный момент у нас недостаточно средств для покупки звезд.\n\n' +
+        'Пожалуйста, напишите в поддержку: @onezee123',
+      balanceCheckFailed:
+        '❌ Ошибка проверки баланса\n\n' +
+        'Не удалось проверить доступность средств. Пожалуйста, попробуйте позже или напишите в поддержку: @onezee123',
+      purchaseFailedInsufficientFunds:
+        '❌ Ошибка при покупке\n\n' +
+        'Недостаточно средств для завершения покупки. Пожалуйста, напишите в поддержку: @onezee123\n\n' +
+        'Также проверьте канал с отчетами для информации о вашем заказе.',
+      purchaseFailedConfirmation:
+        '❌ Ошибка подтверждения транзакции\n\n' +
+        'Пожалуйста, напишите в поддержку: @onezee123\n\n' +
+        'Также проверьте канал с отчетами для информации о вашем заказе.',
     },
     errors: {
       usernameRequired:
@@ -170,6 +191,22 @@ export const translations: Record<string, Translations> = {
         '🎁 Test Mode\n\n' +
         'Currently, only 50 stars purchase is available for testing.\n\n' +
         'Go back and select "50 ⭐" to get free test stars.',
+      checkingBalance: '⏳ Checking balance...',
+      insufficientBalance:
+        '❌ Insufficient funds\n\n' +
+        'We currently do not have enough funds to purchase stars.\n\n' +
+        'Please contact support: @onezee123',
+      balanceCheckFailed:
+        '❌ Balance check failed\n\n' +
+        'Failed to check fund availability. Please try again later or contact support: @onezee123',
+      purchaseFailedInsufficientFunds:
+        '❌ Purchase error\n\n' +
+        'Insufficient funds to complete purchase. Please contact support: @onezee123\n\n' +
+        'Also check the report channel for information about your order.',
+      purchaseFailedConfirmation:
+        '❌ Transaction confirmation error\n\n' +
+        'Please contact support: @onezee123\n\n' +
+        'Also check the report channel for information about your order.',
     },
     errors: {
       usernameRequired:

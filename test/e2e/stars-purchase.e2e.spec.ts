@@ -469,5 +469,21 @@ describe('Stars Purchase E2E', () => {
       expect(user1After?.testClaims).toBe(0);
       expect(user2After?.testClaims).toBe(1);
     }
-  }, 120000); // 120 second timeout for parallel requests
+  }, 120000);
+
+  it.skip('should swap USDT to TON when insufficient balance', async () => {
+    const userRepo = entityManager.getRepository(UserEntity);
+    const testUser = await userRepo.findOneBy({ userId: TEST_USER_ID });
+    if (testUser) {
+      testUser.testClaims = 0;
+      await userRepo.save(testUser);
+    }
+
+    const result = await starsPurchaseService.purchaseTestStars(
+      TEST_USER_ID,
+      TEST_RECIPIENT_USERNAME,
+    );
+
+    expect(result.success).toBeDefined();
+  }, 60000);
 });

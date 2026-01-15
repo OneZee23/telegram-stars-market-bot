@@ -126,6 +126,69 @@ export class NotificationsService {
     await this.sendMessage(message);
   }
 
+  async notifyInsufficientBalance(
+    tonBalance: string,
+    requiredTon: string,
+    usdtBalance: string,
+  ): Promise<void> {
+    const message =
+      `🚨 Критично: Недостаточно средств для покупки\n\n` +
+      `💰 TON баланс: ${tonBalance} TON\n` +
+      `💵 Требуется: ${requiredTon} TON\n` +
+      `💲 USDT баланс: ${usdtBalance} USDT\n\n` +
+      `Недостаточно TON и USDT для выполнения свопа!\n` +
+      `Требуется пополнение кошелька.`;
+
+    await this.sendMessage(message);
+  }
+
+  async notifySwapError(
+    usdtAmount: string,
+    expectedTon: string,
+    error: string,
+  ): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const message =
+      `⚠️ Ошибка свопа USDT → TON\n\n` +
+      `💲 Сумма USDT: ${usdtAmount} USDT\n` +
+      `💰 Ожидалось TON: ${expectedTon} TON\n` +
+      `❌ Ошибка: ${error}\n` +
+      `⏱ Время: ${time}\n\n` +
+      `Проверьте баланс и настройки DEX.`;
+
+    await this.sendMessage(message);
+  }
+
+  async notifySwapFailedUsingTonDirectly(
+    usdtAmount: string,
+    tonBalance: string,
+    requiredTon: string,
+    error: string,
+  ): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const message =
+      `⚠️ Своп USDT → TON не удался, используется TON напрямую\n\n` +
+      `💲 Попытка свопа USDT: ${usdtAmount} USDT\n` +
+      `💰 Текущий баланс TON: ${tonBalance} TON\n` +
+      `📊 Требуется TON: ${requiredTon} TON\n` +
+      `❌ Ошибка свопа: ${error}\n` +
+      `✅ Используется TON напрямую (баланс достаточен)\n` +
+      `⏱ Время: ${time}\n\n` +
+      `Рекомендуется проверить настройки DEX и ликвидность.`;
+
+    await this.sendMessage(message);
+  }
+
   private async sendMessage(text: string): Promise<void> {
     if (!this.config.channelId) {
       this.logger.warn('TELEGRAM_MONITORING_CHANNEL_ID not configured');
