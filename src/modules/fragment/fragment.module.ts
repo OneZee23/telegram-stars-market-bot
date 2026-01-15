@@ -15,6 +15,6 @@ import { StarsPurchaseService } from './services/stars-purchase.service';
     FragmentApiClientService,
     StarsPurchaseService,
   ],
-  exports: [StarsPurchaseService],
+  exports: [StarsPurchaseService, UserModule],
 })
 export class FragmentModule {}
