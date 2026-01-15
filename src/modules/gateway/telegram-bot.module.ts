@@ -1,4 +1,5 @@
 import { FragmentModule } from '@modules/fragment/fragment.module';
+import { PaymentModule } from '@modules/payment/payment.module';
 import { TelegramCoreModule } from '@modules/telegram-core/telegram-core.module';
 import { UserModule } from '@modules/user/user.module';
 import { Logger, Module } from '@nestjs/common';
@@ -12,7 +13,7 @@ import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Module({
-  imports: [TelegramCoreModule, UserModule, FragmentModule],
+  imports: [TelegramCoreModule, UserModule, FragmentModule, PaymentModule],
   providers: [
     TelegramBotService,
     MessageManagementService,

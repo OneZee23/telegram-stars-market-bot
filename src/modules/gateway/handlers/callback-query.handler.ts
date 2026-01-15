@@ -1,6 +1,8 @@
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
+import { PaymentService } from '@modules/payment/services/payment.service';
+import { PurchaseOptionService } from '@modules/payment/services/purchase-option.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
 import { getTranslations } from '../i18n/translations';
@@ -19,6 +21,8 @@ export class CallbackQueryHandler {
     private readonly whitelistService: WhitelistService,
     private readonly starsPurchaseService: StarsPurchaseService,
     private readonly userService: UserService,
+    private readonly paymentService: PaymentService,
+    private readonly purchaseOptionService: PurchaseOptionService,
   ) {}
 
   async handleCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
@@ -73,13 +77,29 @@ export class CallbackQueryHandler {
           callbackData,
         );
         break;
+      default:
+        // Handle payment option selection (payment_stars_{amount})
+        if (callbackData.startsWith('payment_stars_')) {
+          const starsAmount = parseInt(
+            callbackData.replace('payment_stars_', ''),
+            10,
+          );
+          if (!isNaN(starsAmount)) {
+            await this.handlePaymentOptionSelected(
+              ctx,
+              userContext.userId,
+              t,
+              userContext,
+              starsAmount,
+            );
+          }
+        }
+        break;
       case 'amount_custom':
         await this.handleCustomAmount(ctx, userContext.userId, t);
         break;
       case 'back_to_main':
         await this.handleBackToMain(ctx, userContext.userId, t);
-        break;
-      default:
         break;
     }
   }
@@ -176,11 +196,103 @@ export class CallbackQueryHandler {
         .replace('{post}', 'https://t.me/onezee_co/49');
       await this.messageManagementService.editMessage(ctx, userId, message);
     } else {
-      // For non-whitelisted users: show message about whitelist
+      // For non-whitelisted users: show payment options
+      await this.handleShowPaymentOptions(ctx, userId, t, userContext);
+    }
+  }
+
+  private async handleShowPaymentOptions(
+    ctx: Context,
+    userId: string,
+    t: ReturnType<typeof getTranslations>,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+  ): Promise<void> {
+    const options = this.purchaseOptionService.getAllActiveOptions();
+
+    if (options.length === 0) {
       const message = t.buyStars.notInWhitelist
         .replace('{userId}', userId)
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
+      await this.messageManagementService.editMessage(ctx, userId, message);
+      return;
+    }
+
+    const keyboardButtons = options.map((option) => {
+      const finalPrice = this.purchaseOptionService.getFinalPrice(option);
+      const discountText =
+        option.discountPercent > 0
+          ? ` (скидка ${option.discountPercent}%)`
+          : '';
+      return [
+        {
+          text: `${option.starsAmount} ⭐ - ${finalPrice.toFixed(2)} ₽${discountText}`,
+          callback_data: `payment_stars_${option.starsAmount}`,
+        },
+      ];
+    });
+
+    keyboardButtons.push([
+      { text: t.mainMenu.back, callback_data: 'buy_stars' },
+    ]);
+
+    const keyboard = KeyboardBuilder.createInlineKeyboard(keyboardButtons);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.buyStars.selectPaymentAmount,
+      keyboard,
+    );
+  }
+
+  private async handlePaymentOptionSelected(
+    ctx: Context,
+    userId: string,
+    t: ReturnType<typeof getTranslations>,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+    starsAmount: number,
+  ): Promise<void> {
+    let username = ctx.from?.username;
+
+    if (!username && ctx.chat) {
+      try {
+        const chat = await ctx.telegram.getChat(ctx.chat.id);
+        if ('username' in chat && chat.username) {
+          username = chat.username;
+        }
+      } catch {
+        username = userContext?.username;
+      }
+    }
+
+    if (!username) {
+      const errorText = t.errors.usernameRequired;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.buyStars.paymentProcessing,
+    );
+
+    const result = await this.paymentService.createPaymentRequest(
+      userId,
+      starsAmount,
+      username,
+    );
+
+    if (result.success && result.confirmationUrl) {
+      const message = t.buyStars.paymentLinkSent.replace(
+        '{link}',
+        result.confirmationUrl,
+      );
+      await this.messageManagementService.editMessage(ctx, userId, message);
+    } else {
+      const errorMessage = result.error || 'unknown_error';
+      const message = t.buyStars.paymentError.replace('{error}', errorMessage);
       await this.messageManagementService.editMessage(ctx, userId, message);
     }
   }

@@ -3,6 +3,7 @@ import { WebserverModule } from '@infra/webserver/webserver.module';
 import { FragmentModule } from '@modules/fragment/fragment.module';
 import { TelegramBotModule } from '@modules/gateway/telegram-bot.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { PaymentModule } from '@modules/payment/payment.module';
 import { UserModule } from '@modules/user/user.module';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -19,6 +20,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     UserModule,
     FragmentModule,
     NotificationsModule,
+    PaymentModule,
   ],
 })
 export class AppModule {}

@@ -206,6 +206,32 @@ export class NotificationsService {
     await this.sendMessage(message);
   }
 
+  async notifyPaymentFailedInsufficientBalance(
+    tonBalance: string,
+    requiredTon: string,
+    usdtBalance: string,
+    starsAmount: number,
+  ): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    });
+
+    const message =
+      `🚨 Критично: Покупка не прошла - недостаточно средств\n\n` +
+      `⭐ Запрошено звезд: ${starsAmount}\n` +
+      `💰 TON баланс: ${tonBalance} TON\n` +
+      `💵 Требуется: ${requiredTon} TON\n` +
+      `💲 USDT баланс: ${usdtBalance} USDT\n\n` +
+      `Пользователю отправлено сообщение об ошибке.\n` +
+      `Требуется пополнение баланса USDT или TON.\n` +
+      `⏱ Время (UTC): ${time}`;
+
+    await this.sendMessage(message);
+  }
+
   private async sendMessage(text: string): Promise<void> {
     if (!this.config.channelId) {
       this.logger.warn('TELEGRAM_MONITORING_CHANNEL_ID not configured');

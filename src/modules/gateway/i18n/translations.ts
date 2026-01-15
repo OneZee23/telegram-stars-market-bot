@@ -35,6 +35,10 @@ export interface Translations {
     balanceCheckFailed: string;
     purchaseFailedInsufficientFunds: string;
     purchaseFailedConfirmation: string;
+    selectPaymentAmount: string;
+    paymentLinkSent: string;
+    paymentError: string;
+    paymentProcessing: string;
   };
   errors: {
     usernameRequired: string;
@@ -119,6 +123,20 @@ export const translations: Record<string, Translations> = {
         '❌ Ошибка подтверждения транзакции\n\n' +
         'Пожалуйста, напишите в поддержку: @onezee123\n\n' +
         'Также проверьте канал с отчетами для информации о вашем заказе.',
+      selectPaymentAmount:
+        '💳 Выберите количество звезд для покупки:\n\n' +
+        'Цены указаны в рублях. Оплата через СБП или банковскую карту.',
+      paymentLinkSent:
+        '✅ Ссылка на оплату отправлена!\n\n' +
+        'Перейдите по ссылке ниже для оплаты:\n\n' +
+        '{link}\n\n' +
+        'После успешной оплаты звезды будут автоматически зачислены на ваш аккаунт.',
+      paymentError:
+        '❌ Ошибка при создании платежа\n\n' +
+        '{error}\n\n' +
+        'Пожалуйста, попробуйте позже или напишите в поддержку: @onezee123',
+      paymentProcessing:
+        '⏳ Создание платежа...',
     },
     errors: {
       usernameRequired:
@@ -207,6 +225,20 @@ export const translations: Record<string, Translations> = {
         '❌ Transaction confirmation error\n\n' +
         'Please contact support: @onezee123\n\n' +
         'Also check the report channel for information about your order.',
+      selectPaymentAmount:
+        '💳 Select the number of stars to purchase:\n\n' +
+        'Prices are in rubles. Payment via SBP or bank card.',
+      paymentLinkSent:
+        '✅ Payment link sent!\n\n' +
+        'Click the link below to pay:\n\n' +
+        '{link}\n\n' +
+        'After successful payment, stars will be automatically credited to your account.',
+      paymentError:
+        '❌ Error creating payment\n\n' +
+        '{error}\n\n' +
+        'Please try again later or contact support: @onezee123',
+      paymentProcessing:
+        '⏳ Creating payment...',
     },
     errors: {
       usernameRequired:
