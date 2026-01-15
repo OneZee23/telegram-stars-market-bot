@@ -180,7 +180,11 @@ export class StarsPurchaseService {
       if (!walletData) {
         throw new Error('Failed to initialize wallet');
       }
+      this.logger.debug(
+        `Required TON amount: ${buyRequest.amount} nano (${parseFloat(buyRequest.amount) / 1e9} TON)`,
+      );
       await this.ensureSufficientTonBalance(buyRequest.amount, walletData);
+      this.logger.debug('Balance check completed, sufficient funds available');
 
       // 7. Get transaction details
       this.logger.debug('Getting transaction details...');

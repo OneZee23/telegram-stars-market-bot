@@ -63,23 +63,36 @@ export class DexSwapService {
         url.searchParams.append('api_key', this.config.toncenterApiKey);
       }
 
+      this.logger.debug(`Getting TON balance for wallet: ${walletAddress}`);
+
       const response = await fetch(url.toString(), {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const errorText = await response.text();
+        this.logger.error(
+          `TON balance API error: HTTP ${response.status}: ${errorText}`,
+        );
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
       if (!data.ok) {
+        this.logger.error(
+          `TON balance API error: ${data.error || JSON.stringify(data)}`,
+        );
         throw new Error(`API error: ${data.error || JSON.stringify(data)}`);
       }
 
       const balance = data.result?.balance || '0';
       const TonWebTyped = TonWeb as unknown as TonWebExtended;
-      return TonWebTyped.utils.fromNano(balance);
+      const tonBalance = TonWebTyped.utils.fromNano(balance);
+      this.logger.debug(
+        `TON balance: ${tonBalance} TON (raw: ${balance} nano)`,
+      );
+      return tonBalance;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to get TON balance: ${message}`);
@@ -91,6 +104,9 @@ export class DexSwapService {
     try {
       const jettonMasterAddress =
         this.config.usdtJettonAddress || this.DEFAULT_USDT_JETTON_ADDRESS;
+      this.logger.debug(
+        `Getting USDT balance for wallet: ${walletAddress}, jetton master: ${jettonMasterAddress}`,
+      );
       const { tonWebInstance } = this.createTonWebInstance();
 
       const jettonWalletAddress = await this.getJettonWalletAddress(
@@ -100,13 +116,19 @@ export class DexSwapService {
       );
 
       if (!jettonWalletAddress) {
+        this.logger.warn(
+          `Failed to get jetton wallet address for ${walletAddress}`,
+        );
         return '0';
       }
+
+      this.logger.debug(`Jetton wallet address: ${jettonWalletAddress}`);
 
       const JettonWalletClass = (
         TonWeb as { token?: { jetton?: { JettonWallet: unknown } } }
       ).token?.jetton?.JettonWallet;
       if (!JettonWalletClass) {
+        this.logger.error('JettonWallet class not found in TonWeb');
         return '0';
       }
 
@@ -122,10 +144,17 @@ export class DexSwapService {
       });
       const walletData = await wallet.getData();
       const balance = walletData.balance.toString(10);
-      return (parseFloat(balance) / 10 ** USDT_DECIMALS).toString();
+      const usdtBalance = (
+        parseFloat(balance) /
+        10 ** USDT_DECIMALS
+      ).toString();
+      this.logger.debug(
+        `USDT balance: ${usdtBalance} USDT (raw: ${balance} nano)`,
+      );
+      return usdtBalance;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Failed to get USDT balance: ${message}`);
+      this.logger.error(`Failed to get USDT balance: ${message}`);
       return '0';
     }
   }
@@ -250,16 +279,25 @@ export class DexSwapService {
         tonWebInstance,
       );
 
+      this.logger.debug('Sending swap transaction to blockchain...');
       const txHash = await tonWebInstance.provider.sendBoc(signedTx);
       const hash = extractTxHash(txHash);
 
       if (!hash || hash.toLowerCase().includes('error')) {
+        this.logger.error(
+          `Swap transaction failed: ${hash || 'unknown error'}`,
+        );
         throw new Error(`Transaction failed: ${hash || 'unknown error'}`);
       }
 
-      this.logger.log(`Swap transaction sent. TX Hash: ${hash}`);
+      this.logger.log(`Swap transaction sent successfully. TX Hash: ${hash}`);
+      this.logger.debug('Waiting for transaction confirmation...');
       await waitForTransactionConfirmation();
+      this.logger.debug('Transaction confirmation wait completed');
 
+      this.logger.log(
+        `Swap completed successfully: ${usdtAmount} USDT → ${minTonAmount} TON, TX: ${hash}`,
+      );
       return {
         success: true,
         txHash: hash,
@@ -268,7 +306,9 @@ export class DexSwapService {
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Swap failed: ${message}`);
+      this.logger.error(
+        `Swap failed: ${message}. Attempted: ${usdtAmount} USDT → min ${minTonAmount} TON`,
+      );
       return { success: false, error: message };
     }
   }
