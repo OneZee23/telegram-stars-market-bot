@@ -918,6 +918,11 @@
   resolved "https://registry.yarnpkg.com/@sqltools/formatter/-/formatter-1.2.5.tgz#3abc203c79b8c3e90fd6c156a0c62d5403520e12"
   integrity sha512-Uy0+khmZqUrUGm5dmMqVlnvufZRSK0FbYzVgp0UMstm+F5+W2/jnEEQyc9vo1ZR/E5ZI/B1WjjoTqBqwJL6Krw==
 
+"@ston-fi/sdk@^1.0.0":
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/@ston-fi/sdk/-/sdk-1.2.1.tgz#879244d1bc888beb544bb787917094b8017679ab"
+  integrity sha512-/MNV8uxHV4mKO0vRAb7gL3e+z6IBZFNIo9YeDt7gvA0LhsINj2KZTxDfXP8Id2ywYY7tCBPabn+Qhkep/Rgo/Q==
+
 "@telegraf/types@^7.1.0":
   version "7.1.0"
   resolved "https://registry.yarnpkg.com/@telegraf/types/-/types-7.1.0.tgz#d8bd9b2f5070b4de46971416e890338cd89fc23d"

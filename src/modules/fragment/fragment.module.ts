@@ -5,6 +5,7 @@ import { FragmentConfig } from './fragment.config';
 import { FragmentApiClientService } from './services/fragment-api-client.service';
 import { ProxyManagerService } from './services/proxy-manager.service';
 import { StarsPurchaseService } from './services/stars-purchase.service';
+import { StonfiSwapService } from './services/stonfi-swap.service';
 
 @Module({
   imports: [UserModule, NotificationsModule],
@@ -12,6 +13,7 @@ import { StarsPurchaseService } from './services/stars-purchase.service';
     FragmentConfig,
     ProxyManagerService,
     FragmentApiClientService,
+    StonfiSwapService,
     StarsPurchaseService,
   ],
   exports: [StarsPurchaseService],
