@@ -895,7 +895,7 @@ export class StarsPurchaseService {
     console.log(`USDT available: ${usdtBalance > BigInt(0)}`);
 
     if (usdtBalance > BigInt(0)) {
-      // Get quote for swap (just for logging, not performing)
+      // Get quote for swap
       const quote = await this.stonfiSwapService.getSwapQuote(
         totalRequired.toString(),
       );
@@ -909,6 +909,31 @@ export class StarsPurchaseService {
         );
         // eslint-disable-next-line no-console
         console.log(`USDT sufficient for swap: ${usdtBalance >= requiredUsdt}`);
+
+        // Perform swap if USDT balance is sufficient
+        if (usdtBalance >= requiredUsdt) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[SWAP] USDT balance sufficient. Performing swap: ${requiredUsdtFormatted} USDT -> ${requiredTonFormatted} TON`,
+          );
+
+          const swapResult = await this.stonfiSwapService.swapUsdtToTon(
+            requiredUsdt.toString(),
+            quote.minToAmount,
+          );
+
+          if (swapResult.success) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `[SWAP] Swap completed successfully. TX Hash: ${swapResult.txHash}`,
+            );
+          } else {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[SWAP] Swap failed: ${swapResult.error || 'Unknown error'}`,
+            );
+          }
+        }
       }
     }
 
