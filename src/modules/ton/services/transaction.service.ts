@@ -146,13 +146,14 @@ export class TransactionService {
       }
 
       const boc = await signingMessage.toBoc();
-      const hash = await tonWebInstance.boc.Cell.oneFromBoc(boc).hash();
+      const signingMessageCell = tonWebInstance.boc.Cell.oneFromBoc(boc);
+      const hash = await signingMessageCell.hash();
 
       const signature = nacl.sign.detached(hash, secretKeyUint8);
 
       const body = new TonWebTyped.boc.Cell();
       body.bits.writeBytes(signature);
-      body.writeCell(tonWebInstance.boc.Cell.oneFromBoc(boc));
+      body.writeCell(signingMessageCell);
 
       let stateInit = null;
       if (seqno === 0) {
