@@ -1,3 +1,4 @@
+import { ADMIN_USER_ID } from '@common/constants/admin.constants';
 import { maskUserId, maskUsername } from '@common/utils/data-masker.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { Telegraf } from 'telegraf';
@@ -28,6 +29,14 @@ export class NotificationsService {
     isSelfPurchase: boolean,
     isTestPurchase: boolean = false,
   ): Promise<void> {
+    const isAdmin = userId === ADMIN_USER_ID;
+
+    // Admin gets special notification for test claims
+    if (isAdmin && isTestPurchase) {
+      await this.notifyAdminTestClaim();
+      return;
+    }
+
     this.incrementPurchaseCount();
     const maskedUser = maskUsername(username);
     const maskedId = maskUserId(userId);
@@ -38,6 +47,13 @@ export class NotificationsService {
       ? `🎁 Бесплатный тестовый клейм!`
       : `🎉 Новая покупка!`;
 
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    });
+
     const message =
       `${title}\n\n` +
       `⭐ Количество: ${starsAmount.toLocaleString()} Stars\n` +
@@ -46,8 +62,21 @@ export class NotificationsService {
       `👤 Получатель: ${maskedUser} ${isSelfPurchase ? '(себе)' : ''}\n` +
       `🆔 Пользователь: ${maskedId}\n` +
       `⏱ Время обработки: ${processingTime} сек\n` +
-      `📅 Время: ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}\n\n` +
+      `📅 Время (UTC): ${time}\n\n` +
       `${purchaseCount === 1 ? 'Первая покупка за сегодня!' : `Это ${purchaseCount}-я покупка за сегодня`}`;
+
+    await this.sendMessage(message);
+  }
+
+  async notifyAdminTestClaim(): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    });
+
+    const message = `🧪 Тестовый клейм админа\n\n⏱ Время (UTC): ${time}`;
 
     await this.sendMessage(message);
   }
@@ -62,11 +91,12 @@ export class NotificationsService {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+      timeZone: 'UTC',
     });
 
     let message = `🚨 Ошибка ${errorType}\n\n`;
     message += `❌ Тип: ${errorType}\n`;
-    message += `⏱ Время: ${time}\n`;
+    message += `⏱ Время (UTC): ${time}\n`;
 
     if (attempt && maxAttempts) {
       message += `🔄 Попытка: ${attempt}/${maxAttempts}\n`;
@@ -90,6 +120,7 @@ export class NotificationsService {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+      timeZone: 'UTC',
     });
 
     let message = `⚠️ Подозрительная активность\n\n`;
@@ -104,7 +135,7 @@ export class NotificationsService {
       message += `🌐 IP: ${maskedIp}\n`;
     }
 
-    message += `⏱ Период: ${time}\n`;
+    message += `⏱ Период (UTC): ${time}\n`;
     message += `🛡 Действие: Rate limit активирован\n\n`;
     message += `Мониторим ситуацию...`;
 
@@ -116,11 +147,19 @@ export class NotificationsService {
     requiredBalance: string,
     pendingOrders: number,
   ): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    });
+
     const message =
       `🚨 Критично: Недостаточно TON\n\n` +
       `💰 Текущий баланс: ${currentBalance} TON\n` +
       `💵 Требуется: ${requiredBalance} TON\n` +
-      `📊 Ожидающих заказов: ${pendingOrders}\n\n` +
+      `📊 Ожидающих заказов: ${pendingOrders}\n` +
+      `⏱ Время (UTC): ${time}\n\n` +
       `Требуется пополнение кошелька!`;
 
     await this.sendMessage(message);

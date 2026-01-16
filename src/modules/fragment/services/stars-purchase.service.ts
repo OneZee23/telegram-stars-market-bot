@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, import/no-extraneous-dependencies, @typescript-eslint/no-require-imports */
+import { ADMIN_USER_ID } from '@common/constants/admin.constants';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { Injectable, Logger } from '@nestjs/common';
@@ -412,6 +413,7 @@ export class StarsPurchaseService {
   /**
    * Purchase 50 test stars for whitelisted user
    * This method handles the complete flow: whitelist check, purchase, and test claims increment
+   * Admin can claim without restrictions
    * @param userId Telegram user ID of the purchaser
    * @param recipientUsername Telegram username of the recipient (with or without @)
    * @returns Purchase result with request ID
@@ -422,26 +424,32 @@ export class StarsPurchaseService {
   ): Promise<PurchaseResult> {
     const TEST_STARS_AMOUNT = 50;
     const MAX_TEST_CLAIMS = 1;
+    const isAdmin = userId === ADMIN_USER_ID;
 
-    // 1. Check if user is whitelisted
-    const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
-    if (!isWhitelisted) {
-      return {
-        success: false,
-        error: 'User is not whitelisted',
-      };
+    // 1. Check if user is whitelisted (admin bypasses this check)
+    if (!isAdmin) {
+      const isWhitelisted =
+        await this.whitelistService.isUserWhitelisted(userId);
+      if (!isWhitelisted) {
+        return {
+          success: false,
+          error: 'User is not whitelisted',
+        };
+      }
     }
 
-    // 2. Check if user can claim test stars
-    const canClaim = await this.whitelistService.canClaimTestStars(
-      userId,
-      MAX_TEST_CLAIMS,
-    );
-    if (!canClaim) {
-      return {
-        success: false,
-        error: 'User has already claimed test stars',
-      };
+    // 2. Check if user can claim test stars (admin bypasses this check)
+    if (!isAdmin) {
+      const canClaim = await this.whitelistService.canClaimTestStars(
+        userId,
+        MAX_TEST_CLAIMS,
+      );
+      if (!canClaim) {
+        return {
+          success: false,
+          error: 'User has already claimed test stars',
+        };
+      }
     }
 
     // 3. Purchase stars
@@ -453,8 +461,8 @@ export class StarsPurchaseService {
       true, // isTestPurchase
     );
 
-    // 4. If purchase was successful, increment test claims
-    if (result.success) {
+    // 4. If purchase was successful, increment test claims (admin still increments for tracking)
+    if (result.success && !isAdmin) {
       await this.whitelistService.incrementTestClaims(userId);
     }
 
