@@ -1,6 +1,6 @@
 import { ConfigFragment } from '@common/config/config-fragment';
 import { UseEnv } from '@common/config/use-env.decorator';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 /**
  * Configuration for Fragment API integration
@@ -83,4 +83,48 @@ export class FragmentConfig extends ConfigFragment {
   @IsOptional()
   @UseEnv('FRAGMENT_PROXY_PURCHASE_URL')
   public readonly proxyPurchaseUrl?: string;
+
+  /**
+   * USDT jetton address on TON (mainnet)
+   * Default: EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs
+   */
+  @IsString()
+  @IsNotEmpty()
+  @UseEnv(
+    'USDT_JETTON_ADDRESS',
+    (value?: string) =>
+      value || 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs',
+  )
+  public readonly usdtJettonAddress: string;
+
+  /**
+   * Slippage tolerance for swap operations (percentage)
+   * Default: 1%
+   */
+  @IsInt()
+  @Min(0)
+  @UseEnv('SWAP_SLIPPAGE_TOLERANCE', (value?: string) =>
+    value ? parseInt(value, 10) : 1,
+  )
+  public readonly swapSlippageTolerance: number;
+
+  /**
+   * Reserve percent for fees when swapping (percentage)
+   * Default: 5%
+   */
+  @IsInt()
+  @Min(0)
+  @UseEnv('SWAP_RESERVE_PERCENT', (value?: string) =>
+    value ? parseInt(value, 10) : 5,
+  )
+  public readonly swapReservePercent: number;
+
+  /**
+   * Minimum TON amount reserved for fees (in nano)
+   * Default: 100000000 (0.1 TON)
+   */
+  @IsString()
+  @IsNotEmpty()
+  @UseEnv('MIN_TON_FOR_FEES', (value?: string) => value || '100000000')
+  public readonly minTonForFees: string;
 }
