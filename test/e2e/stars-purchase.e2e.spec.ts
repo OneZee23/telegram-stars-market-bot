@@ -35,8 +35,9 @@ describe('Stars Purchase E2E', () => {
   let entityManager: EntityManager;
 
   // Test configuration
-  const TEST_USER_ID = '999999999';
-  const TEST_RECIPIENT_USERNAME = 'test_user'; // Change to a valid Telegram username
+  const TEST_USER_ID = process.env.TEST_USER_ID || '999999999';
+  const TEST_RECIPIENT_USERNAME =
+    process.env.TEST_RECIPIENT_USERNAME || 'test_user'; // Change to a valid Telegram username
 
   // Second user for parallel tests
   const TEST_USER_ID_2 = '888888888';
