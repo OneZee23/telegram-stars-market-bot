@@ -1,3 +1,4 @@
+import { ADMIN_USER_ID } from '@common/constants/admin.constants';
 import { UserEntity } from '@modules/user/entities/user.entity';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
@@ -174,11 +175,17 @@ export class WhitelistService implements OnModuleInit {
 
   /**
    * Checks if user can claim test stars (whitelisted and hasn't exceeded limit)
+   * Admin can always claim regardless of limit
    */
   async canClaimTestStars(
     userId: string,
     maxTestClaims: number = 1,
   ): Promise<boolean> {
+    // Admin can always claim
+    if (userId === ADMIN_USER_ID) {
+      return true;
+    }
+
     const userRepo = this.db.getRepository(UserEntity);
     const user = await userRepo.findOneBy({ userId });
 
