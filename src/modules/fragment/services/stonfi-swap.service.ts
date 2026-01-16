@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, import/no-extraneous-dependencies */
 import { Injectable, Logger } from '@nestjs/common';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { StonApiClient } from '@ston-fi/api';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { DEX, pTON } from '@ston-fi/sdk';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { Address, TonClient } from '@ton/ton';
 import { mnemonicToPrivateKey } from 'ton-crypto';
 import * as TonWeb from 'tonweb';
+import * as nacl from 'tweetnacl';
 import { FragmentConfig } from '../fragment.config';
 
 /**
@@ -37,7 +44,25 @@ export interface WalletBalance {
 export class StonfiSwapService {
   private readonly logger = new Logger(StonfiSwapService.name);
 
-  constructor(private readonly config: FragmentConfig) {}
+  private readonly stonApiClient: StonApiClient;
+
+  private readonly tonClient: TonClient;
+
+  private readonly TON_NATIVE_ADDRESS =
+    'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
+
+  private readonly USDT_DECIMALS = 6;
+
+  private readonly TON_DECIMALS = 9;
+
+  constructor(private readonly config: FragmentConfig) {
+    this.stonApiClient = new StonApiClient();
+    this.tonClient = new TonClient({
+      endpoint:
+        this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
+      apiKey: this.config.toncenterApiKey,
+    });
+  }
 
   /**
    * Get wallet balances (TON and USDT)
@@ -121,73 +146,149 @@ export class StonfiSwapService {
    */
   async getSwapQuote(tonAmountRequired: string): Promise<SwapQuote | null> {
     try {
-      // Use STON.fi API to get quote
-      // For now, we'll use a simple calculation based on current rates
-      // In production, you should use STON.fi SDK or API
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Getting swap quote for ${tonAmountRequired} nano TON`,
+      );
 
-      // STON.fi API endpoint for quotes
-      const quoteUrl = `https://api.ston.fi/v1/quote?from=${this.config.usdtJettonAddress}&to=TON&amount=${tonAmountRequired}`;
+      const tonAmountBigInt = BigInt(tonAmountRequired);
+      const tonUnits = Number(tonAmountBigInt);
+      const slippageTolerance = this.getSlippageTolerance();
 
-      const response = await fetch(quoteUrl);
-      if (!response.ok) {
-        throw new Error(`STON.fi API error: ${response.statusText}`);
+      if (tonUnits < 100000000) {
+        this.logger.warn(`TON amount too small: ${tonAmountRequired}`);
+        return null;
       }
 
-      const data = await response.json();
+      // Use reverse simulation: simulate swap from TON to USDT
+      // to find out how much USDT we get for the required TON
+      // Then we can calculate the required USDT amount
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Simulating reverse swap: TON -> USDT to calculate required USDT`,
+      );
 
-      // Calculate required USDT with reserve for fees
-      // API may return numbers as strings or floats, need to normalize
-      const fromAmountRaw = data.from_amount || data.amount_in;
-      const toAmountRaw = data.to_amount || data.amount_out;
-      const minToAmountRaw = data.min_to_amount || data.amount_out_min;
+      const simulationResult = await this.stonApiClient.simulateSwap({
+        offerAddress: this.TON_NATIVE_ADDRESS,
+        askAddress: this.config.usdtJettonAddress,
+        offerUnits: tonAmountRequired,
+        slippageTolerance: slippageTolerance.toString(),
+      });
 
-      // Convert to string and handle floats - convert to nano units
-      // If it's already a string with decimal, we need to handle it
-      const fromAmount = this.normalizeToNano(fromAmountRaw);
-      const toAmount = this.normalizeToNano(toAmountRaw);
-      const minToAmount = this.normalizeToNano(minToAmountRaw || toAmountRaw);
+      if (!simulationResult?.minAskUnits) {
+        throw new Error('Invalid simulation result from STON.fi');
+      }
+
+      // minAskUnits is the USDT we get for the TON we offer
+      // But we need the opposite - how much USDT to give to get the TON
+      // So we simulate the forward swap: USDT -> TON
+      const receivedUsdtNano = BigInt(simulationResult.minAskUnits.toString());
+
+      // Now simulate forward swap with estimated USDT to get exact amounts
+      // We'll use the received USDT as a starting point
+      const estimatedUsdtForSimulation = receivedUsdtNano.toString();
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Simulating forward swap: ${estimatedUsdtForSimulation} nano USDT -> TON`,
+      );
+
+      const forwardSimulation = await this.stonApiClient.simulateSwap({
+        offerAddress: this.config.usdtJettonAddress,
+        askAddress: this.TON_NATIVE_ADDRESS,
+        offerUnits: estimatedUsdtForSimulation,
+        slippageTolerance: slippageTolerance.toString(),
+      });
+
+      if (!forwardSimulation?.minAskUnits) {
+        throw new Error('Invalid forward simulation result from STON.fi');
+      }
+
+      const receivedTonNano = BigInt(forwardSimulation.minAskUnits.toString());
+      const givenUsdtNano = BigInt(estimatedUsdtForSimulation);
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Forward simulation: ${givenUsdtNano.toString()} nano USDT -> ${receivedTonNano.toString()} nano TON`,
+      );
+
+      // Adjust USDT amount if needed to get exactly the required TON
+      let requiredUsdtNano: bigint;
+      if (receivedTonNano < tonAmountBigInt) {
+        // Need more USDT - calculate proportion
+        const ratio = (tonAmountBigInt * BigInt(1000000)) / receivedTonNano;
+        requiredUsdtNano = (givenUsdtNano * ratio) / BigInt(1000000);
+        // eslint-disable-next-line no-console
+        console.log(
+          `[QUOTE] Adjusting USDT: ${givenUsdtNano.toString()} -> ${requiredUsdtNano.toString()}`,
+        );
+      } else {
+        requiredUsdtNano = givenUsdtNano;
+      }
 
       // Add reserve percent for fees
       const reserveMultiplier = 1 + this.config.swapReservePercent / 100;
-      const fromAmountWithReserve = (
-        BigInt(fromAmount) * BigInt(Math.floor(reserveMultiplier * 100))
-      ).toString();
+      const requiredUsdtWithReserve =
+        (requiredUsdtNano * BigInt(Math.floor(reserveMultiplier * 100))) /
+        BigInt(100);
+
+      // Calculate min TON with slippage
+      const slippageMultiplier = BigInt(
+        100 - this.config.swapSlippageTolerance,
+      );
+      const minTonAmount = (tonAmountBigInt * slippageMultiplier) / BigInt(100);
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Final quote: ${requiredUsdtWithReserve.toString()} nano USDT -> ${tonAmountRequired} nano TON (min: ${minTonAmount.toString()})`,
+      );
 
       return {
-        fromAmount: fromAmountWithReserve,
-        toAmount,
-        minToAmount,
+        fromAmount: requiredUsdtWithReserve.toString(),
+        toAmount: tonAmountRequired,
+        minToAmount: minTonAmount.toString(),
       };
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to get swap quote: ${errorMessage}`);
+      // eslint-disable-next-line no-console
+      console.log(`[QUOTE] Error: ${errorMessage}`);
 
       // Fallback: estimate based on approximate rate (1 USDT ≈ 6.5 TON)
-      // This is a rough estimate, should be replaced with real API call
-      const estimatedUsdt = (
-        (BigInt(tonAmountRequired) * BigInt(100)) /
-        BigInt(650)
-      ).toString();
+      const tonAmountBigInt = BigInt(tonAmountRequired);
+      const estimatedUsdtNano =
+        (tonAmountBigInt * BigInt(1000000)) / BigInt(650000000);
       const reserveMultiplier = 1 + this.config.swapReservePercent / 100;
-      const fromAmountWithReserve = (
-        BigInt(estimatedUsdt) * BigInt(Math.floor(reserveMultiplier * 100))
-      ).toString();
+      const fromAmountWithReserve =
+        (estimatedUsdtNano * BigInt(Math.floor(reserveMultiplier * 100))) /
+        BigInt(100);
+      const slippageMultiplier = BigInt(
+        100 - this.config.swapSlippageTolerance,
+      );
+      const minToAmount = (tonAmountBigInt * slippageMultiplier) / BigInt(100);
 
       this.logger.warn(
         `Using fallback quote estimation. Real API call failed: ${errorMessage}`,
       );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[QUOTE] Using fallback: ${fromAmountWithReserve.toString()} nano USDT`,
+      );
 
       return {
-        fromAmount: fromAmountWithReserve,
+        fromAmount: fromAmountWithReserve.toString(),
         toAmount: tonAmountRequired,
-        minToAmount: (
-          (BigInt(tonAmountRequired) *
-            BigInt(100 - this.config.swapSlippageTolerance)) /
-          BigInt(100)
-        ).toString(),
+        minToAmount: minToAmount.toString(),
       };
     }
+  }
+
+  /**
+   * Get slippage tolerance as decimal (e.g., 1% = 0.01)
+   */
+  private getSlippageTolerance(): number {
+    return parseFloat(this.config.swapSlippageTolerance.toString()) / 100;
   }
 
   /**
@@ -210,31 +311,122 @@ export class StonfiSwapService {
         };
       }
 
-      // For now, we'll use a simplified approach
-      // In production, you should use @ston-fi/sdk to create and sign the swap transaction
-      // This is a placeholder implementation
-
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] Starting swap: ${usdtAmount} nano USDT -> min ${minTonAmount} nano TON`,
+      );
       this.logger.log(
         `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON)`,
       );
 
-      // TODO: Implement actual swap using @ston-fi/sdk
-      // Example structure:
-      // 1. Create swap transaction using STON.fi SDK
-      // 2. Sign transaction with wallet private key
-      // 3. Send transaction to blockchain
-      // 4. Wait for confirmation
+      // Convert USDT amount from nano to units for simulation
+      const usdtAmountFloat = parseFloat(usdtAmount) / 10 ** this.USDT_DECIMALS;
+      const usdtUnits = Math.floor(usdtAmountFloat * 10 ** this.USDT_DECIMALS);
+      const slippageTolerance = this.getSlippageTolerance();
 
-      // Placeholder: return error indicating implementation needed
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] Simulating swap with ${usdtUnits} nano USDT, slippage: ${slippageTolerance}`,
+      );
+
+      // Simulate swap to get transaction parameters
+      const simulationResult = await this.stonApiClient.simulateSwap({
+        offerAddress: this.config.usdtJettonAddress,
+        askAddress: this.TON_NATIVE_ADDRESS,
+        offerUnits: usdtUnits.toString(),
+        slippageTolerance: slippageTolerance.toString(),
+      });
+
+      if (!simulationResult?.router) {
+        throw new Error('Invalid simulation result from STON.fi');
+      }
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] Simulation result: ${simulationResult.minAskUnits} nano TON`,
+      );
+
+      // Create DEX contracts using SDK
+      const { router: routerInfo } = simulationResult;
+      // Use DEX v1 Router
+      const RouterClass = DEX.v1.Router;
+      const routerContract = RouterClass.create(routerInfo.address);
+      // Create pTON contract - pass the contract instance, not opened
+      const PtonClass = pTON.v1;
+      const proxyTonContract = PtonClass.create(routerInfo.ptonMasterAddress);
+
+      // Get transaction parameters
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Getting transaction parameters...`);
+      // getSwapJettonToTonTxParams returns SenderArguments: { to, value, body }
+      const routerAddress = Address.parse(routerInfo.address);
+      const senderArgs = await routerContract.getSwapJettonToTonTxParams(
+        this.tonClient.provider(routerAddress),
+        {
+          userWalletAddress: walletData.address,
+          offerJettonAddress: this.config.usdtJettonAddress,
+          offerAmount: simulationResult.offerUnits,
+          minAskAmount: simulationResult.minAskUnits,
+          proxyTon: proxyTonContract,
+          queryId: Date.now(),
+        },
+      );
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] SenderArguments: to=${senderArgs.to.toString()}, value=${senderArgs.value.toString()}`,
+      );
+
+      // Convert SenderArguments to messages format for signing
+      // SenderArguments has: { to: Address, value: bigint, body: Cell }
+      const { httpProvider, tonWebInstance } = this.createTonWebInstance();
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Signing transaction...`);
+      const signedTx = await this.signTransactionFromParams(
+        {
+          messages: [
+            {
+              address: senderArgs.to.toString(),
+              amount: senderArgs.value.toString(),
+              payload: senderArgs.body
+                ? tonWebInstance.utils.bytesToBase64(
+                    await senderArgs.body.toBoc(),
+                  )
+                : undefined,
+            },
+          ],
+        },
+        walletData.privateKey,
+        httpProvider,
+        tonWebInstance,
+      );
+
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Sending transaction to blockchain...`);
+      const txHash = await tonWebInstance.provider.sendBoc(signedTx);
+      const hash = this.extractTxHash(txHash);
+
+      if (!hash || hash.toLowerCase().includes('error')) {
+        throw new Error(`Transaction failed: ${hash || 'unknown error'}`);
+      }
+
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Transaction sent. TX Hash: ${hash}`);
+      this.logger.log(`Swap transaction sent. TX Hash: ${hash}`);
+
+      // Wait for transaction confirmation
+      await this.waitForTransactionConfirmation();
+
       return {
-        success: false,
-        error:
-          'STON.fi swap implementation pending. Please use @ston-fi/sdk to implement swap transaction.',
+        success: true,
+        txHash: hash,
       };
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Swap failed: ${errorMessage}`);
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Swap failed: ${errorMessage}`);
       return {
         success: false,
         error: errorMessage,
@@ -506,5 +698,127 @@ export class StonfiSwapService {
 
     // If it's an integer, assume it's already in nano
     return Math.floor(numValue).toString();
+  }
+
+  /**
+   * Create TonWeb instance with HTTP provider
+   */
+  private createTonWebInstance(): {
+    httpProvider: any;
+    tonWebInstance: any;
+  } {
+    const TonWebTyped = TonWeb as any;
+    const httpProvider = new TonWebTyped.HttpProvider(
+      this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
+      { apiKey: this.config.toncenterApiKey },
+    );
+    const tonWebInstance = new TonWebTyped(httpProvider);
+    return { httpProvider, tonWebInstance };
+  }
+
+  /**
+   * Sign transaction from parameters
+   */
+  private async signTransactionFromParams(
+    txParams: {
+      messages?: Array<{
+        address: string;
+        amount: string;
+        payload?: string;
+      }>;
+    },
+    privateKey: Uint8Array,
+    httpProvider: any,
+    tonWebInstance: any,
+  ): Promise<string> {
+    const TonWebTyped = TonWeb as any;
+    const mnemonicArray = this.config.mnemonic.trim().split(/\s+/);
+    const keyPair = await mnemonicToPrivateKey(mnemonicArray);
+    const WalletClass = tonWebInstance.wallet.all.v3R2;
+    const wallet = new WalletClass(httpProvider, {
+      publicKey: keyPair.publicKey,
+    });
+
+    const seqno = (await wallet.methods.seqno().call()) || 0;
+    const signingMessage = wallet.createSigningMessage(seqno);
+    signingMessage.bits.writeUint8(3);
+
+    for (const message of txParams.messages || []) {
+      let messagePayload = null;
+      if (message.payload) {
+        const payloadBytes = tonWebInstance.utils.base64ToBytes(
+          message.payload,
+        );
+        messagePayload = tonWebInstance.boc.Cell.oneFromBoc(payloadBytes);
+      }
+
+      const outMsg = TonWebTyped.Contract.createOutMsg(
+        message.address,
+        message.amount,
+        messagePayload,
+        null,
+      );
+      signingMessage.refs.push(outMsg);
+    }
+
+    const boc = await signingMessage.toBoc();
+    const hash = await tonWebInstance.boc.Cell.oneFromBoc(boc).hash();
+    const signature = nacl.sign.detached(hash, privateKey);
+
+    const body = new TonWebTyped.boc.Cell();
+    body.bits.writeBytes(signature);
+    body.writeCell(tonWebInstance.boc.Cell.oneFromBoc(boc));
+
+    const selfAddress = await wallet.getAddress();
+    const header =
+      TonWebTyped.Contract.createExternalMessageHeader(selfAddress);
+    const externalMessage = TonWebTyped.Contract.createCommonMsgInfo(
+      header,
+      seqno === 0 ? (await wallet.createStateInit()).stateInit : null,
+      body,
+    );
+
+    const signedBoc = await externalMessage.toBoc();
+    return TonWebTyped.utils.bytesToBase64(signedBoc);
+  }
+
+  /**
+   * Extract transaction hash from response
+   */
+  private extractTxHash(
+    txHash:
+      | string
+      | {
+          hash?: string;
+          tx_hash?: string;
+          transaction_id?: string;
+          result?: string;
+        }
+      | null,
+  ): string | null {
+    if (typeof txHash === 'string') {
+      return txHash;
+    }
+    if (txHash && typeof txHash === 'object') {
+      return (
+        txHash.hash ||
+        txHash.tx_hash ||
+        txHash.transaction_id ||
+        txHash.result ||
+        null
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Wait for transaction confirmation
+   */
+  private async waitForTransactionConfirmation(
+    maxWaitTime: number = 10000,
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), maxWaitTime);
+    });
   }
 }
