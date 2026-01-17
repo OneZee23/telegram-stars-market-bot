@@ -112,6 +112,14 @@ export class StarsPurchaseService {
 
   private readonly PRICE_PER_STAR_RUB = 1.244;
 
+  /**
+   * Fixed price for 50 stars on Fragment (in USD)
+   * We use 0.85 USDT with reserve for 50 stars
+   */
+  private readonly PRICE_50_STARS_USD = 0.75;
+
+  private readonly USDT_RESERVE_MULTIPLIER = 1.133; // 0.85 / 0.75 = 1.133
+
   private startTime?: number;
 
   // Simple flag to track if a purchase is currently being processed
@@ -366,103 +374,100 @@ export class StarsPurchaseService {
       // Priority: Use USDT for swap if available and sufficient
       // Only use TON directly if USDT is not available or insufficient
       if (hasUsdt) {
-        // Try to swap USDT to TON (preferred method, even if TON is sufficient)
+        // Calculate required USDT based on Fragment's fixed price (0.85 USDT for 50 stars)
+        const usdtAmountForStars =
+          (amount / 50) *
+          this.PRICE_50_STARS_USD *
+          this.USDT_RESERVE_MULTIPLIER;
+        const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6)); // Convert to nano (6 decimals)
+        const requiredUsdtFormatted = usdtAmountForStars.toFixed(2);
+        const hasSufficientUsdt = initialUsdtBalance >= requiredUsdtNano;
+
         // eslint-disable-next-line no-console
         console.log(
-          `[SWAP] USDT available. Checking if USDT swap is possible (preferred over direct TON payment)...`,
+          `[SWAP] USDT available. Required: ${requiredUsdtFormatted} USDT (based on Fragment price: ${(amount / 50) * this.PRICE_50_STARS_USD} USD for ${amount} stars + reserve)`,
         );
-        this.logger.log(`USDT available. Checking if USDT swap is possible...`);
-
-        // Get quote for swap
-        // eslint-disable-next-line no-console
-        console.log(
-          `[SWAP] Getting swap quote for ${requiredTonFormatted} TON...`,
-        );
-        const quote = await this.stonfiSwapService.getSwapQuote(
-          totalRequiredTon.toString(),
+        this.logger.log(
+          `USDT available. Required: ${requiredUsdtFormatted} USDT for ${amount} stars`,
         );
 
-        if (quote && quote.fromAmount) {
-          const requiredUsdt = BigInt(quote.fromAmount);
-          const requiredUsdtFormatted = (Number(requiredUsdt) / 1e6).toFixed(2);
-          const hasSufficientUsdt = initialUsdtBalance >= requiredUsdt;
-
+        if (hasSufficientUsdt) {
           // eslint-disable-next-line no-console
           console.log(
-            `[SWAP] Quote received: ${requiredUsdtFormatted} USDT needed for ${requiredTonFormatted} TON`,
+            `[SWAP] USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
           );
+          this.logger.log(
+            `USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+          );
+
+          // Notify user that we're processing (simulate waiting for payment)
           // eslint-disable-next-line no-console
           console.log(
-            `[SWAP] USDT sufficient: ${hasSufficientUsdt} (${initialUsdtFormatted} >= ${requiredUsdtFormatted})`,
+            `[SWAP] Processing your payment. Please wait while we complete the transaction...`,
+          );
+          this.logger.log(
+            `Processing your payment. Please wait while we complete the transaction...`,
+          );
+          await this.sleep(1000); // Simulate 1 second wait for user payment
+
+          // Get quote for swap to know minimum TON we'll receive
+          // eslint-disable-next-line no-console
+          console.log(
+            `[SWAP] Getting swap quote for ${requiredUsdtFormatted} USDT...`,
+          );
+          const swapQuote = await this.stonfiSwapService.getSwapQuoteFromUsdt(
+            requiredUsdtNano.toString(),
           );
 
-          if (hasSufficientUsdt) {
+          if (!swapQuote) {
+            throw new Error('Failed to get swap quote');
+          }
+
+          const minTonAmount = swapQuote.minToAmount;
+
+          // Perform swap
+          // eslint-disable-next-line no-console
+          console.log(
+            `[SWAP] Executing USDT to TON swap: ${requiredUsdtFormatted} USDT -> min ${(Number(BigInt(minTonAmount)) / 1e9).toFixed(4)} TON...`,
+          );
+          this.logger.log(`Executing USDT to TON swap...`);
+          const swapResult = await this.stonfiSwapService.swapUsdtToTon(
+            requiredUsdtNano.toString(),
+            minTonAmount,
+          );
+
+          if (swapResult.success) {
+            swapPerformed = true;
+            swapTxHash = swapResult.txHash;
             // eslint-disable-next-line no-console
             console.log(
-              `[SWAP] USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+              `[SWAP] Swap completed successfully! TX Hash: ${swapTxHash}`,
             );
             this.logger.log(
-              `USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+              `Swap completed successfully. TX Hash: ${swapTxHash}`,
             );
 
-            // Notify user that we're processing (simulate waiting for payment)
+            // Wait a bit for swap to settle
             // eslint-disable-next-line no-console
-            console.log(
-              `[SWAP] Processing your payment. Please wait while we complete the transaction...`,
-            );
-            this.logger.log(
-              `Processing your payment. Please wait while we complete the transaction...`,
-            );
-            await this.sleep(1000); // Simulate 1 second wait for user payment
-
-            // Perform swap
-            // eslint-disable-next-line no-console
-            console.log(
-              `[SWAP] Executing USDT to TON swap: ${requiredUsdtFormatted} USDT -> min ${(Number(BigInt(quote.minToAmount)) / 1e9).toFixed(4)} TON...`,
-            );
-            this.logger.log(`Executing USDT to TON swap...`);
-            const swapResult = await this.stonfiSwapService.swapUsdtToTon(
-              requiredUsdt.toString(),
-              quote.minToAmount,
-            );
-
-            if (swapResult.success) {
-              swapPerformed = true;
-              swapTxHash = swapResult.txHash;
-              // eslint-disable-next-line no-console
-              console.log(
-                `[SWAP] Swap completed successfully! TX Hash: ${swapTxHash}`,
-              );
-              this.logger.log(
-                `Swap completed successfully. TX Hash: ${swapTxHash}`,
-              );
-
-              // Wait a bit for swap to settle
-              // eslint-disable-next-line no-console
-              console.log(`[SWAP] Waiting 2 seconds for swap to settle...`);
-              await this.sleep(2000);
-            } else {
-              // eslint-disable-next-line no-console
-              console.error(
-                `[SWAP] Swap failed: ${swapResult.error || 'Unknown error'}`,
-              );
-              throw new Error(
-                `Swap failed: ${swapResult.error || 'Unknown error'}`,
-              );
-            }
+            console.log(`[SWAP] Waiting 2 seconds for swap to settle...`);
+            await this.sleep(2000);
           } else {
             // eslint-disable-next-line no-console
             console.error(
-              `[SWAP] Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+              `[SWAP] Swap failed: ${swapResult.error || 'Unknown error'}`,
             );
             throw new Error(
-              `Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+              `Swap failed: ${swapResult.error || 'Unknown error'}`,
             );
           }
         } else {
           // eslint-disable-next-line no-console
-          console.error(`[SWAP] Failed to get swap quote`);
-          throw new Error('Failed to get swap quote');
+          console.error(
+            `[SWAP] Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+          );
+          throw new Error(
+            `Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+          );
         }
       }
 
@@ -581,12 +586,12 @@ export class StarsPurchaseService {
         const finalTonBalance = BigInt(finalBalances.ton || '0');
         const finalUsdtBalance = BigInt(finalBalances.usdt || '0');
 
-        const tonSpent = initialTonBalance - finalTonBalance;
+        const tonChange = finalTonBalance - initialTonBalance;
         const usdtSpent = initialUsdtBalance - finalUsdtBalance;
 
         const finalTonFormatted = (Number(finalTonBalance) / 1e9).toFixed(4);
         const finalUsdtFormatted = (Number(finalUsdtBalance) / 1e6).toFixed(2);
-        const tonSpentFormatted = (Number(tonSpent) / 1e9).toFixed(4);
+        const tonChangeFormatted = (Number(tonChange) / 1e9).toFixed(4);
         const usdtSpentFormatted = (Number(usdtSpent) / 1e6).toFixed(2);
 
         // eslint-disable-next-line no-console
@@ -595,24 +600,27 @@ export class StarsPurchaseService {
         );
         // eslint-disable-next-line no-console
         console.log(
-          `[BALANCE] Balance changes - TON spent: ${tonSpentFormatted} TON, USDT spent: ${usdtSpentFormatted} USDT`,
+          `[BALANCE] Balance changes - TON change: ${tonChangeFormatted} TON (${tonChange >= BigInt(0) ? '+' : ''}${tonChangeFormatted}), USDT spent: ${usdtSpentFormatted} USDT`,
         );
 
         this.logger.log(
           `Final balances - TON: ${finalTonFormatted}, USDT: ${finalUsdtFormatted}`,
         );
         this.logger.log(
-          `Balance changes - TON spent: ${tonSpentFormatted}, USDT spent: ${usdtSpentFormatted}`,
+          `Balance changes - TON change: ${tonChangeFormatted}, USDT spent: ${usdtSpentFormatted}`,
         );
 
         if (swapPerformed) {
-          const tonFromSwap = tonSpent > BigInt(0) ? -tonSpent : BigInt(0);
+          // When swap is performed, TON change = TON received from swap - TON spent on purchase
+          // Positive change means we got more TON than needed
+          // requiredTonBigInt is the amount needed for purchase (without fees)
+          const tonReceivedFromSwap = tonChange + requiredTonBigInt;
           // eslint-disable-next-line no-console
           console.log(
-            `[BALANCE] Swap was performed. USDT spent: ${usdtSpentFormatted} USDT, TON received from swap: ~${(Number(tonFromSwap) / 1e9).toFixed(4)} TON`,
+            `[BALANCE] Swap was performed. USDT spent: ${usdtSpentFormatted} USDT, TON received from swap: ~${(Number(tonReceivedFromSwap) / 1e9).toFixed(4)} TON, TON spent on purchase: ${(Number(requiredTonBigInt) / 1e9).toFixed(4)} TON`,
           );
           this.logger.log(
-            `Swap was performed. USDT spent: ${usdtSpentFormatted}, TON received from swap: ~${(Number(tonFromSwap) / 1e9).toFixed(4)}`,
+            `Swap was performed. USDT spent: ${usdtSpentFormatted}, TON received from swap: ~${(Number(tonReceivedFromSwap) / 1e9).toFixed(4)}, TON spent on purchase: ${(Number(requiredTonBigInt) / 1e9).toFixed(4)}`,
           );
         } else {
           // eslint-disable-next-line no-console

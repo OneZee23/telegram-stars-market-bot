@@ -69,7 +69,6 @@ export class StonfiSwapService {
         this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
       apiKey: this.config.toncenterApiKey,
     });
-    // Initialize Omniston SDK
     this.omniston = new Omniston({
       apiUrl: 'wss://omni-ws.ston.fi',
     });
@@ -82,10 +81,7 @@ export class StonfiSwapService {
     walletAddress: string,
   ): Promise<WalletBalance | null> {
     try {
-      // Get TON balance using TON Center API
       const tonBalance = await this.getTonBalance(walletAddress);
-
-      // Get USDT jetton balance
       const { usdtJettonAddress } = this.config;
       const usdtBalance = await this.getJettonBalance(
         walletAddress,
@@ -147,7 +143,75 @@ export class StonfiSwapService {
   }
 
   /**
-   * Get quote for swapping USDT to TON
+   * Get quote for swapping USDT to TON based on USDT amount
+   * @param usdtAmount USDT amount in nano (6 decimals)
+   * @returns Quote with expected TON amount
+   */
+  async getSwapQuoteFromUsdt(usdtAmount: string): Promise<SwapQuote | null> {
+    try {
+      const usdtAmountBigInt = BigInt(usdtAmount);
+      const usdtUnits = Number(usdtAmountBigInt);
+      const slippageTolerance = this.getSlippageTolerance();
+
+      if (usdtUnits < 1000) {
+        this.logger.warn(`USDT amount too small: ${usdtAmount}`);
+        return null;
+      }
+
+      // Simulate swap USDT -> TON to get expected TON amount
+      const simulationResult = await this.stonApiClient.simulateSwap({
+        offerAddress: this.config.usdtJettonAddress,
+        askAddress: this.TON_NATIVE_ADDRESS,
+        offerUnits: usdtAmount,
+        slippageTolerance: slippageTolerance.toString(),
+      });
+
+      if (!simulationResult?.minAskUnits) {
+        throw new Error('Invalid simulation result from STON.fi');
+      }
+
+      const receivedTonNano = BigInt(simulationResult.minAskUnits.toString());
+
+      // Calculate min TON with slippage
+      const slippageMultiplier = BigInt(
+        100 - this.config.swapSlippageTolerance,
+      );
+      const minTonAmount = (receivedTonNano * slippageMultiplier) / BigInt(100);
+
+      return {
+        fromAmount: usdtAmount,
+        toAmount: receivedTonNano.toString(),
+        minToAmount: minTonAmount.toString(),
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to get swap quote from USDT: ${errorMessage}`);
+
+      // Fallback: estimate TON amount
+      const usdtAmountBigInt = BigInt(usdtAmount);
+      const estimatedTonNano =
+        (usdtAmountBigInt * BigInt(650000000)) / BigInt(1000000);
+
+      const slippageMultiplier = BigInt(
+        100 - this.config.swapSlippageTolerance,
+      );
+      const minToAmount = (estimatedTonNano * slippageMultiplier) / BigInt(100);
+
+      this.logger.warn(
+        `Using fallback quote estimation. Real API call failed: ${errorMessage}`,
+      );
+
+      return {
+        fromAmount: usdtAmount,
+        toAmount: estimatedTonNano.toString(),
+        minToAmount: minToAmount.toString(),
+      };
+    }
+  }
+
+  /**
+   * Get quote for swapping USDT to TON (legacy method - calculates USDT needed for required TON)
    * @param tonAmountRequired Required TON amount in nano
    * @returns Quote with required USDT amount
    */
@@ -162,9 +226,6 @@ export class StonfiSwapService {
         return null;
       }
 
-      // Use reverse simulation: simulate swap from TON to USDT
-      // to find out how much USDT we get for the required TON
-      // Then we can calculate the required USDT amount
       const simulationResult = await this.stonApiClient.simulateSwap({
         offerAddress: this.TON_NATIVE_ADDRESS,
         askAddress: this.config.usdtJettonAddress,
@@ -176,13 +237,7 @@ export class StonfiSwapService {
         throw new Error('Invalid simulation result from STON.fi');
       }
 
-      // minAskUnits is the USDT we get for the TON we offer
-      // But we need the opposite - how much USDT to give to get the TON
-      // So we simulate the forward swap: USDT -> TON
       const receivedUsdtNano = BigInt(simulationResult.minAskUnits.toString());
-
-      // Now simulate forward swap with estimated USDT to get exact amounts
-      // We'll use the received USDT as a starting point
       const estimatedUsdtForSimulation = receivedUsdtNano.toString();
 
       const forwardSimulation = await this.stonApiClient.simulateSwap({
@@ -199,32 +254,17 @@ export class StonfiSwapService {
       const receivedTonNano = BigInt(forwardSimulation.minAskUnits.toString());
       const givenUsdtNano = BigInt(estimatedUsdtForSimulation);
 
-      // Adjust USDT amount if needed to get exactly the required TON
       let requiredUsdtNano: bigint;
       if (receivedTonNano < tonAmountBigInt) {
-        // Need more USDT - calculate proportion
         const ratio = (tonAmountBigInt * BigInt(1000000)) / receivedTonNano;
         requiredUsdtNano = (givenUsdtNano * ratio) / BigInt(1000000);
       } else {
         requiredUsdtNano = givenUsdtNano;
       }
 
-      // Add reserve for swap fees (typically 0.03-0.04 TON per swap)
-      // Instead of 5% reserve, we use 2% + fixed fee amount for better precision
-      const swapFeeReserveTon = BigInt(40000000); // 0.04 TON for swap fees
-      const swapFeeReserveUsdt =
-        (swapFeeReserveTon * requiredUsdtNano) / receivedTonNano;
-
-      // Add small percentage reserve (2%) for price fluctuations
-      const smallReserveMultiplier = BigInt(102); // 1.02 = 2%
-      const requiredUsdtWithSmallReserve =
-        (requiredUsdtNano * smallReserveMultiplier) / BigInt(100);
-
-      // Total: base amount + swap fee reserve + small percentage reserve
+      const reserveMultiplier = BigInt(1015);
       const requiredUsdtWithReserve =
-        requiredUsdtWithSmallReserve + swapFeeReserveUsdt;
-
-      // Calculate min TON with slippage
+        (requiredUsdtNano * reserveMultiplier) / BigInt(1000);
       const slippageMultiplier = BigInt(
         100 - this.config.swapSlippageTolerance,
       );
@@ -240,20 +280,13 @@ export class StonfiSwapService {
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to get swap quote: ${errorMessage}`);
 
-      // Fallback: estimate based on approximate rate (1 USDT ≈ 6.5 TON)
       const tonAmountBigInt = BigInt(tonAmountRequired);
       const estimatedUsdtNano =
         (tonAmountBigInt * BigInt(1000000)) / BigInt(650000000);
 
-      // Add reserve for swap fees (0.04 TON) + small percentage (2%)
-      const swapFeeReserveTon = BigInt(40000000); // 0.04 TON
-      const swapFeeReserveUsdt =
-        (swapFeeReserveTon * estimatedUsdtNano) / tonAmountBigInt;
-      const smallReserveMultiplier = BigInt(102); // 2%
-      const estimatedWithSmallReserve =
-        (estimatedUsdtNano * smallReserveMultiplier) / BigInt(100);
+      const reserveMultiplier = BigInt(1015);
       const fromAmountWithReserve =
-        estimatedWithSmallReserve + swapFeeReserveUsdt;
+        (estimatedUsdtNano * reserveMultiplier) / BigInt(1000);
       const slippageMultiplier = BigInt(
         100 - this.config.swapSlippageTolerance,
       );
@@ -289,7 +322,6 @@ export class StonfiSwapService {
     minTonAmount: string,
   ): Promise<SwapResult> {
     try {
-      // Initialize wallet
       const walletData = await this.initializeWallet();
       if (!walletData) {
         return {
@@ -318,16 +350,13 @@ export class StonfiSwapService {
           bidUnits: usdtAmount,
         },
         settlementParams: {
-          maxPriceSlippageBps: this.config.swapSlippageTolerance * 100, // Convert % to basis points
+          maxPriceSlippageBps: this.config.swapSlippageTolerance * 100,
           gaslessSettlement: GaslessSettlement.GASLESS_SETTLEMENT_POSSIBLE,
-          maxOutgoingMessages: 4, // Default for TON
+          maxOutgoingMessages: 4,
           flexibleReferrerFee: true,
         },
       });
 
-      // Wait for the best quote (with timeout)
-      // Omniston SDK returns RxJS Observable - convert to Promise with timeout
-      // We need to wait for 'ack' first, then 'quoteUpdated'
       const quoteEvents = await new Promise<{
         type: string;
         quote?: any;
@@ -405,7 +434,6 @@ export class StonfiSwapService {
         );
       }
 
-      // Build transaction using Omniston
       const tx = await this.omniston.buildTransfer({
         quote,
         sourceAddress: {
@@ -430,7 +458,6 @@ export class StonfiSwapService {
 
       this.logger.debug(`Transaction built: ${messages.length} message(s)`);
 
-      // Create custom Sender implementation using @ton/ton for signing
       // eslint-disable-next-line import/no-extraneous-dependencies
       const { WalletContractV3R2, internal, Cell } = await import('@ton/ton');
       // eslint-disable-next-line import/no-extraneous-dependencies
@@ -478,7 +505,7 @@ export class StonfiSwapService {
             to: targetAddress,
             value: sendAmount,
             body,
-            bounce: true, // Set bounce to true for jetton transfers
+            bounce: true,
           }),
         );
       }
@@ -571,15 +598,12 @@ export class StonfiSwapService {
         this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC';
       const apiKey = this.config.toncenterApiKey;
 
-      // Create TonWeb instance
       const TonWebTyped = TonWeb as any;
       const httpProvider = new TonWebTyped.HttpProvider(url, {
         apiKey,
       });
       const tonWebInstance = new TonWebTyped(httpProvider);
 
-      // Step 1: Get jetton wallet address using call2
-      // Create a cell with the owner address
       const cell = new tonWebInstance.boc.Cell();
       cell.bits.writeAddress(new tonWebInstance.utils.Address(walletAddress));
       const slice = tonWebInstance.utils.bytesToBase64(await cell.toBoc(false));
@@ -600,7 +624,6 @@ export class StonfiSwapService {
         return '0';
       }
 
-      // Step 2: Get balance from jetton wallet using TonWeb JettonWallet class
       const JettonWalletClass = (
         TonWeb as { token?: { jetton?: { JettonWallet: unknown } } }
       ).token?.jetton?.JettonWallet;
