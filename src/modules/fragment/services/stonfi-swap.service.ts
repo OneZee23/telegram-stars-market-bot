@@ -87,10 +87,6 @@ export class StonfiSwapService {
 
       // Get USDT jetton balance
       const { usdtJettonAddress } = this.config;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[BALANCE] USDT jetton address from config: ${usdtJettonAddress}`,
-      );
       const usdtBalance = await this.getJettonBalance(
         walletAddress,
         usdtJettonAddress,
@@ -157,11 +153,6 @@ export class StonfiSwapService {
    */
   async getSwapQuote(tonAmountRequired: string): Promise<SwapQuote | null> {
     try {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Getting swap quote for ${tonAmountRequired} nano TON`,
-      );
-
       const tonAmountBigInt = BigInt(tonAmountRequired);
       const tonUnits = Number(tonAmountBigInt);
       const slippageTolerance = this.getSlippageTolerance();
@@ -174,11 +165,6 @@ export class StonfiSwapService {
       // Use reverse simulation: simulate swap from TON to USDT
       // to find out how much USDT we get for the required TON
       // Then we can calculate the required USDT amount
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Simulating reverse swap: TON -> USDT to calculate required USDT`,
-      );
-
       const simulationResult = await this.stonApiClient.simulateSwap({
         offerAddress: this.TON_NATIVE_ADDRESS,
         askAddress: this.config.usdtJettonAddress,
@@ -199,11 +185,6 @@ export class StonfiSwapService {
       // We'll use the received USDT as a starting point
       const estimatedUsdtForSimulation = receivedUsdtNano.toString();
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Simulating forward swap: ${estimatedUsdtForSimulation} nano USDT -> TON`,
-      );
-
       const forwardSimulation = await this.stonApiClient.simulateSwap({
         offerAddress: this.config.usdtJettonAddress,
         askAddress: this.TON_NATIVE_ADDRESS,
@@ -218,41 +199,36 @@ export class StonfiSwapService {
       const receivedTonNano = BigInt(forwardSimulation.minAskUnits.toString());
       const givenUsdtNano = BigInt(estimatedUsdtForSimulation);
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Forward simulation: ${givenUsdtNano.toString()} nano USDT -> ${receivedTonNano.toString()} nano TON`,
-      );
-
       // Adjust USDT amount if needed to get exactly the required TON
       let requiredUsdtNano: bigint;
       if (receivedTonNano < tonAmountBigInt) {
         // Need more USDT - calculate proportion
         const ratio = (tonAmountBigInt * BigInt(1000000)) / receivedTonNano;
         requiredUsdtNano = (givenUsdtNano * ratio) / BigInt(1000000);
-        // eslint-disable-next-line no-console
-        console.log(
-          `[QUOTE] Adjusting USDT: ${givenUsdtNano.toString()} -> ${requiredUsdtNano.toString()}`,
-        );
       } else {
         requiredUsdtNano = givenUsdtNano;
       }
 
-      // Add reserve percent for fees
-      const reserveMultiplier = 1 + this.config.swapReservePercent / 100;
+      // Add reserve for swap fees (typically 0.03-0.04 TON per swap)
+      // Instead of 5% reserve, we use 2% + fixed fee amount for better precision
+      const swapFeeReserveTon = BigInt(40000000); // 0.04 TON for swap fees
+      const swapFeeReserveUsdt =
+        (swapFeeReserveTon * requiredUsdtNano) / receivedTonNano;
+
+      // Add small percentage reserve (2%) for price fluctuations
+      const smallReserveMultiplier = BigInt(102); // 1.02 = 2%
+      const requiredUsdtWithSmallReserve =
+        (requiredUsdtNano * smallReserveMultiplier) / BigInt(100);
+
+      // Total: base amount + swap fee reserve + small percentage reserve
       const requiredUsdtWithReserve =
-        (requiredUsdtNano * BigInt(Math.floor(reserveMultiplier * 100))) /
-        BigInt(100);
+        requiredUsdtWithSmallReserve + swapFeeReserveUsdt;
 
       // Calculate min TON with slippage
       const slippageMultiplier = BigInt(
         100 - this.config.swapSlippageTolerance,
       );
       const minTonAmount = (tonAmountBigInt * slippageMultiplier) / BigInt(100);
-
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Final quote: ${requiredUsdtWithReserve.toString()} nano USDT -> ${tonAmountRequired} nano TON (min: ${minTonAmount.toString()})`,
-      );
 
       return {
         fromAmount: requiredUsdtWithReserve.toString(),
@@ -263,17 +239,21 @@ export class StonfiSwapService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to get swap quote: ${errorMessage}`);
-      // eslint-disable-next-line no-console
-      console.log(`[QUOTE] Error: ${errorMessage}`);
 
       // Fallback: estimate based on approximate rate (1 USDT ≈ 6.5 TON)
       const tonAmountBigInt = BigInt(tonAmountRequired);
       const estimatedUsdtNano =
         (tonAmountBigInt * BigInt(1000000)) / BigInt(650000000);
-      const reserveMultiplier = 1 + this.config.swapReservePercent / 100;
+
+      // Add reserve for swap fees (0.04 TON) + small percentage (2%)
+      const swapFeeReserveTon = BigInt(40000000); // 0.04 TON
+      const swapFeeReserveUsdt =
+        (swapFeeReserveTon * estimatedUsdtNano) / tonAmountBigInt;
+      const smallReserveMultiplier = BigInt(102); // 2%
+      const estimatedWithSmallReserve =
+        (estimatedUsdtNano * smallReserveMultiplier) / BigInt(100);
       const fromAmountWithReserve =
-        (estimatedUsdtNano * BigInt(Math.floor(reserveMultiplier * 100))) /
-        BigInt(100);
+        estimatedWithSmallReserve + swapFeeReserveUsdt;
       const slippageMultiplier = BigInt(
         100 - this.config.swapSlippageTolerance,
       );
@@ -281,10 +261,6 @@ export class StonfiSwapService {
 
       this.logger.warn(
         `Using fallback quote estimation. Real API call failed: ${errorMessage}`,
-      );
-      // eslint-disable-next-line no-console
-      console.log(
-        `[QUOTE] Using fallback: ${fromAmountWithReserve.toString()} nano USDT`,
       );
 
       return {
@@ -322,17 +298,11 @@ export class StonfiSwapService {
         };
       }
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] Starting swap via Omniston: ${usdtAmount} nano USDT -> min ${minTonAmount} nano TON`,
-      );
       this.logger.log(
         `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON) via Omniston`,
       );
 
       // Request quote from Omniston
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Requesting quote from Omniston...`);
 
       const quoteObservable = this.omniston.requestForQuote({
         settlementMethods: [SettlementMethod.SETTLEMENT_METHOD_SWAP],
@@ -356,35 +326,62 @@ export class StonfiSwapService {
       });
 
       // Wait for the best quote (with timeout)
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Waiting for quote (timeout: 10s)...`);
       // Omniston SDK returns RxJS Observable - convert to Promise with timeout
+      // We need to wait for 'ack' first, then 'quoteUpdated'
       const quoteEvents = await new Promise<{
         type: string;
         quote?: any;
         rfqId?: string;
       }>((resolve, reject) => {
         let subscription: any;
+        let ackReceived = false;
+        let quoteReceived = false;
         const timeoutId = setTimeout(() => {
           if (subscription) {
             subscription.unsubscribe();
           }
-          reject(new Error('Quote request timeout'));
-        }, 10000);
+          if (!ackReceived) {
+            reject(new Error('Quote request ack timeout'));
+          } else if (!quoteReceived) {
+            reject(new Error('Quote request timeout'));
+          } else {
+            reject(new Error('Quote request timeout'));
+          }
+        }, 15000);
 
         subscription = (quoteObservable as any).subscribe({
           next: (event: any) => {
-            if (event.type === 'quoteUpdated') {
+            if (event.type === 'ack') {
+              // Quote request acknowledged, now we can receive quoteUpdated
+              ackReceived = true;
+              this.logger.debug('Quote request acknowledged');
+            } else if (event.type === 'quoteUpdated') {
+              if (!ackReceived) {
+                clearTimeout(timeoutId);
+                subscription.unsubscribe();
+                reject(
+                  new Error('Received "quoteUpdated" event without ack event'),
+                );
+                return;
+              }
+              quoteReceived = true;
               clearTimeout(timeoutId);
               subscription.unsubscribe();
               resolve(event);
-            } else if (event.type === 'ack') {
-              // eslint-disable-next-line no-console
-              console.log(`[SWAP] Quote request acknowledged: ${event.rfqId}`);
+            } else if (event.type === 'noQuote') {
+              clearTimeout(timeoutId);
+              subscription.unsubscribe();
+              reject(new Error('No quote available'));
             }
           },
           error: (error: unknown) => {
             clearTimeout(timeoutId);
+            if (subscription) {
+              subscription.unsubscribe();
+            }
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            this.logger.error(`Quote observable error: ${errorMessage}`);
             reject(error);
           },
         });
@@ -395,13 +392,8 @@ export class StonfiSwapService {
       }
 
       const { quote } = quoteEvents;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] Quote received: ${quote.bidUnits} USDT -> ${quote.askUnits} TON (quoteId: ${quote.quoteId})`,
-      );
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] Resolver: ${quote.resolverName} (${quote.resolverId})`,
+      this.logger.log(
+        `Quote received: ${quote.bidUnits} USDT -> ${quote.askUnits} TON via ${quote.resolverName}`,
       );
 
       // Verify that the quote meets minimum requirements
@@ -414,8 +406,6 @@ export class StonfiSwapService {
       }
 
       // Build transaction using Omniston
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Building transaction via Omniston...`);
       const tx = await this.omniston.buildTransfer({
         quote,
         sourceAddress: {
@@ -438,8 +428,7 @@ export class StonfiSwapService {
         throw new Error('No messages in transaction');
       }
 
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Transaction built: ${messages.length} message(s)`);
+      this.logger.debug(`Transaction built: ${messages.length} message(s)`);
 
       // Create custom Sender implementation using @ton/ton for signing
       // eslint-disable-next-line import/no-extraneous-dependencies
@@ -484,11 +473,6 @@ export class StonfiSwapService {
           body = cell as InstanceType<typeof Cell>;
         }
 
-        // eslint-disable-next-line no-console
-        console.log(
-          `[SWAP] Preparing message to ${targetAddress.toString()}, amount: ${sendAmount.toString()}`,
-        );
-
         messageList.push(
           internal({
             to: targetAddress,
@@ -506,8 +490,6 @@ export class StonfiSwapService {
         messages: messageList,
       });
 
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Transaction sent via @ton/ton`);
       this.logger.log(
         `Swap transaction sent via Omniston. Quote ID: ${quote.quoteId}`,
       );
@@ -523,8 +505,6 @@ export class StonfiSwapService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Swap failed: ${errorMessage}`);
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Swap failed: ${errorMessage}`);
       return {
         success: false,
         error: errorMessage,
@@ -591,11 +571,6 @@ export class StonfiSwapService {
         this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC';
       const apiKey = this.config.toncenterApiKey;
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[JETTON] Getting jetton wallet address for ${walletAddress} from jetton master ${jettonAddress}`,
-      );
-
       // Create TonWeb instance
       const TonWebTyped = TonWeb as any;
       const httpProvider = new TonWebTyped.HttpProvider(url, {
@@ -608,11 +583,6 @@ export class StonfiSwapService {
       const cell = new tonWebInstance.boc.Cell();
       cell.bits.writeAddress(new tonWebInstance.utils.Address(walletAddress));
       const slice = tonWebInstance.utils.bytesToBase64(await cell.toBoc(false));
-
-      // eslint-disable-next-line no-console
-      console.log(
-        `[JETTON] Calling get_wallet_address with serialized address...`,
-      );
 
       const result = await tonWebInstance.provider.call2(
         jettonAddress,
@@ -627,21 +597,14 @@ export class StonfiSwapService {
       );
 
       if (!jettonWalletAddress) {
-        // eslint-disable-next-line no-console
-        console.log(`[JETTON] Could not get jetton wallet address`);
         return '0';
       }
-
-      // eslint-disable-next-line no-console
-      console.log(`[JETTON] Jetton wallet address: ${jettonWalletAddress}`);
 
       // Step 2: Get balance from jetton wallet using TonWeb JettonWallet class
       const JettonWalletClass = (
         TonWeb as { token?: { jetton?: { JettonWallet: unknown } } }
       ).token?.jetton?.JettonWallet;
       if (!JettonWalletClass) {
-        // eslint-disable-next-line no-console
-        console.log(`[JETTON] JettonWallet class not available`);
         return '0';
       }
 
@@ -656,25 +619,16 @@ export class StonfiSwapService {
         address: jettonWalletAddress,
       });
 
-      // eslint-disable-next-line no-console
-      console.log(`[JETTON] Getting balance from jetton wallet...`);
       const walletData = await wallet.getData();
       const balance = walletData.balance.toString(10);
-
-      // Balance is in nano units (6 decimals for USDT)
-      // Return as nano string (not converted to base units)
-      // eslint-disable-next-line no-console
-      console.log(`[JETTON] Balance: ${balance} nano USDT`);
 
       return balance;
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `[JETTON] Failed to get jetton balance: ${errorMessage}. Assuming 0 balance.`,
+        `Failed to get jetton balance: ${errorMessage}. Assuming 0 balance.`,
       );
-      // eslint-disable-next-line no-console
-      console.log(`[JETTON] Error details: ${errorMessage}`);
       return '0';
     }
   }
