@@ -112,6 +112,8 @@ export class StarsPurchaseService {
 
   private readonly PRICE_PER_STAR_RUB = 1.244;
 
+  private startTime?: number;
+
   // Simple flag to track if a purchase is currently being processed
   // TODO: Replace with RabbitMQ or similar message queue for production
   private isProcessingPurchase = false;
@@ -141,11 +143,6 @@ export class StarsPurchaseService {
     hideSender: number = 0, // eslint-disable-line @typescript-eslint/no-unused-vars
     isTestPurchase: boolean = false,
   ): Promise<PurchaseResult> {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[TEST] Starting purchase for user ${userId}, amount: ${amount}, isTestPurchase: ${isTestPurchase}`,
-    );
-
     // Check if a purchase is currently being processed
     // TODO: Replace with RabbitMQ queue status check for production
     if (this.isProcessingPurchase) {
@@ -160,10 +157,9 @@ export class StarsPurchaseService {
 
     // Mark as processing
     this.isProcessingPurchase = true;
-    // eslint-disable-next-line no-console
-    console.log(`[TEST] Marked as processing`);
 
-    // const startTime = Date.now(); // TODO: Uncomment when purchase is enabled
+    const startTime = Date.now();
+    this.startTime = startTime;
     const purchaseRepo = this.em.getRepository(StarsPurchaseEntity);
 
     const purchaseRecord = purchaseRepo.create({
@@ -312,159 +308,355 @@ export class StarsPurchaseService {
         );
       }
 
-      // TEMPORARY: Just check and log balances without performing swap/purchase
-      try {
-        this.logger.log('Starting balance check...');
-        await this.checkAndLogBalances(walletData.address, requiredTonAmount);
-        this.logger.log('Balance check completed successfully');
-      } catch (balanceError: unknown) {
-        const balanceErrorMessage =
-          balanceError instanceof Error
-            ? balanceError.message
-            : String(balanceError);
-        this.logger.error(
-          `Balance check failed: ${balanceErrorMessage}. Continuing anyway for testing.`,
-        );
-        // Don't throw - we want to see the test pass even if balance check fails
+      // 7. Check balance and perform swap if needed
+      // Get initial balances for comparison
+      // eslint-disable-next-line no-console
+      console.log('[BALANCE] Getting initial wallet balances...');
+      const initialBalances = await this.stonfiSwapService.getWalletBalances(
+        walletData.address,
+      );
+      if (!initialBalances) {
+        throw new Error('Failed to get initial wallet balances');
       }
 
-      // TEMPORARY: Return early after balance check (for testing)
-      // But first, update purchase record to COMPLETED status for test assertions
-      this.logger.log(
-        `[TEST MODE] Balance check completed. Purchase disabled for testing. Updating purchase record...`,
+      const initialTonBalance = BigInt(initialBalances.ton || '0');
+      const initialUsdtBalance = BigInt(initialBalances.usdt || '0');
+
+      const initialTonFormatted = (Number(initialTonBalance) / 1e9).toFixed(4);
+      const initialUsdtFormatted = (Number(initialUsdtBalance) / 1e6).toFixed(
+        2,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[BALANCE] Initial balances - TON: ${initialTonFormatted} TON (${initialTonBalance} nano), USDT: ${initialUsdtFormatted} USDT (${initialUsdtBalance} nano)`,
       );
 
-      // Update purchase record status to COMPLETED for test
-      // Note: purchaseRecord was already created earlier in the method
-      if (purchaseRecord) {
-        purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
-        await purchaseRepo.save(purchaseRecord);
+      this.logger.log(
+        `Initial balances - TON: ${initialTonFormatted}, USDT: ${initialUsdtFormatted}`,
+      );
+
+      // Calculate required TON amount (including fees)
+      const minTonForFees = BigInt(this.config.minTonForFees || '100000000');
+      const requiredTonBigInt = BigInt(requiredTonAmount);
+      const totalRequiredTon = requiredTonBigInt + minTonForFees;
+
+      const requiredTonFormatted = (Number(totalRequiredTon) / 1e9).toFixed(4);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[BALANCE] Required TON: ${requiredTonFormatted} TON (${totalRequiredTon} nano) = ${(Number(requiredTonBigInt) / 1e9).toFixed(4)} TON + ${(Number(minTonForFees) / 1e9).toFixed(4)} TON (fees)`,
+      );
+
+      // Check if we have sufficient TON balance
+      const hasSufficientTon = initialTonBalance >= totalRequiredTon;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[BALANCE] TON sufficient: ${hasSufficientTon} (${initialTonFormatted} >= ${requiredTonFormatted})`,
+      );
+
+      // Check if we have USDT - prioritize USDT swap even if TON is sufficient
+      const hasUsdt = initialUsdtBalance > BigInt(0);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[BALANCE] USDT available: ${hasUsdt} (${initialUsdtFormatted} USDT)`,
+      );
+
+      let swapPerformed = false;
+      let swapTxHash: string | undefined;
+
+      // Priority: Use USDT for swap if available and sufficient
+      // Only use TON directly if USDT is not available or insufficient
+      if (hasUsdt) {
+        // Try to swap USDT to TON (preferred method, even if TON is sufficient)
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SWAP] USDT available. Checking if USDT swap is possible (preferred over direct TON payment)...`,
+        );
+        this.logger.log(`USDT available. Checking if USDT swap is possible...`);
+
+        // Get quote for swap
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SWAP] Getting swap quote for ${requiredTonFormatted} TON...`,
+        );
+        const quote = await this.stonfiSwapService.getSwapQuote(
+          totalRequiredTon.toString(),
+        );
+
+        if (quote && quote.fromAmount) {
+          const requiredUsdt = BigInt(quote.fromAmount);
+          const requiredUsdtFormatted = (Number(requiredUsdt) / 1e6).toFixed(2);
+          const hasSufficientUsdt = initialUsdtBalance >= requiredUsdt;
+
+          // eslint-disable-next-line no-console
+          console.log(
+            `[SWAP] Quote received: ${requiredUsdtFormatted} USDT needed for ${requiredTonFormatted} TON`,
+          );
+          // eslint-disable-next-line no-console
+          console.log(
+            `[SWAP] USDT sufficient: ${hasSufficientUsdt} (${initialUsdtFormatted} >= ${requiredUsdtFormatted})`,
+          );
+
+          if (hasSufficientUsdt) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `[SWAP] USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+            );
+            this.logger.log(
+              `USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+            );
+
+            // Notify user that we're processing (simulate waiting for payment)
+            // eslint-disable-next-line no-console
+            console.log(
+              `[SWAP] Processing your payment. Please wait while we complete the transaction...`,
+            );
+            this.logger.log(
+              `Processing your payment. Please wait while we complete the transaction...`,
+            );
+            await this.sleep(1000); // Simulate 1 second wait for user payment
+
+            // Perform swap
+            // eslint-disable-next-line no-console
+            console.log(
+              `[SWAP] Executing USDT to TON swap: ${requiredUsdtFormatted} USDT -> min ${(Number(BigInt(quote.minToAmount)) / 1e9).toFixed(4)} TON...`,
+            );
+            this.logger.log(`Executing USDT to TON swap...`);
+            const swapResult = await this.stonfiSwapService.swapUsdtToTon(
+              requiredUsdt.toString(),
+              quote.minToAmount,
+            );
+
+            if (swapResult.success) {
+              swapPerformed = true;
+              swapTxHash = swapResult.txHash;
+              // eslint-disable-next-line no-console
+              console.log(
+                `[SWAP] Swap completed successfully! TX Hash: ${swapTxHash}`,
+              );
+              this.logger.log(
+                `Swap completed successfully. TX Hash: ${swapTxHash}`,
+              );
+
+              // Wait a bit for swap to settle
+              // eslint-disable-next-line no-console
+              console.log(`[SWAP] Waiting 2 seconds for swap to settle...`);
+              await this.sleep(2000);
+            } else {
+              // eslint-disable-next-line no-console
+              console.error(
+                `[SWAP] Swap failed: ${swapResult.error || 'Unknown error'}`,
+              );
+              throw new Error(
+                `Swap failed: ${swapResult.error || 'Unknown error'}`,
+              );
+            }
+          } else {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[SWAP] Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+            );
+            throw new Error(
+              `Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+            );
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.error(`[SWAP] Failed to get swap quote`);
+          throw new Error('Failed to get swap quote');
+        }
+      }
+
+      // No USDT available - check if we have sufficient TON
+      if (!hasUsdt) {
+        if (!hasSufficientTon) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[BALANCE] Insufficient balance. Required: ${requiredTonFormatted} TON, Available: ${initialTonFormatted} TON. No USDT available for swap.`,
+          );
+          throw new Error(
+            `Insufficient balance. Required: ${requiredTonFormatted} TON, Available: ${initialTonFormatted} TON. No USDT available for swap. Please contact administrators.`,
+          );
+        }
+        // eslint-disable-next-line no-console
+        console.log(
+          `[PURCHASE] No USDT available, but TON balance sufficient (${initialTonFormatted} >= ${requiredTonFormatted}). Proceeding with purchase directly using TON.`,
+        );
         this.logger.log(
-          `[TEST MODE] Purchase record updated to COMPLETED status`,
-        );
-      } else {
-        this.logger.warn(
-          `[TEST MODE] Purchase record not found, this should not happen`,
+          `No USDT available, but TON balance sufficient. Proceeding with purchase.`,
         );
       }
-
-      const testResult = {
-        success: true,
-        requestId: buyRequest.req_id,
-      };
-      this.logger.log(
-        `[TEST MODE] Returning result: ${JSON.stringify(testResult)}`,
-      );
-      return testResult;
-
-      // TODO: Uncomment when ready to perform actual purchase
-      // Check balance and perform swap if needed
-      // await this.ensureSufficientTonBalance(
-      //   walletData.address,
-      //   requiredTonAmount,
-      // );
 
       // 8. Get transaction details from Fragment
-      // TODO: Uncomment when ready to perform actual purchase
-      // const transactionData = await this.apiClient.getBuyStarsLink(
-      //   buyRequest.req_id,
-      //   walletData.address,
-      //   walletData.stateInit,
-      //   walletData.publicKey,
-      //   hideSender,
-      // );
+      // eslint-disable-next-line no-console
+      console.log(`[PURCHASE] Getting transaction details from Fragment...`);
+      const transactionData = await this.apiClient.getBuyStarsLink(
+        buyRequest.req_id,
+        walletData.address,
+        walletData.stateInit,
+        walletData.publicKey,
+        hideSender,
+      );
 
-      // this.logger.debug('Transaction details received');
+      // eslint-disable-next-line no-console
+      console.log(`[PURCHASE] Transaction details received`);
+      this.logger.debug('Transaction details received');
 
-      // // 9. Sign transaction
-      // this.logger.debug('Signing transaction...');
-      // const signedBoc = await this.signTransaction(
-      //   transactionData.transaction,
-      //   walletData,
-      // );
+      // 9. Sign transaction
+      // eslint-disable-next-line no-console
+      console.log(`[PURCHASE] Signing transaction...`);
+      this.logger.debug('Signing transaction...');
+      const signedBoc = await this.signTransaction(
+        transactionData.transaction,
+        walletData,
+      );
 
-      // // 10. Send transaction to blockchain
-      // this.logger.debug('Sending transaction to blockchain...');
-      // const txHash = await this.sendTransactionToBlockchain(signedBoc);
+      // 10. Send transaction to blockchain
+      // eslint-disable-next-line no-console
+      console.log(`[PURCHASE] Sending transaction to blockchain...`);
+      this.logger.debug('Sending transaction to blockchain...');
+      const txHash = await this.sendTransactionToBlockchain(signedBoc);
 
-      // // Validate txHash - it should be a valid hash, not an error message
-      // const isValidTxHash =
-      //   txHash &&
-      //   typeof txHash === 'string' &&
-      //   txHash.length > 20 &&
-      //   !txHash.toLowerCase().includes('error') &&
-      //   !txHash.toLowerCase().includes('rate') &&
-      //   !txHash.toLowerCase().includes('limit') &&
-      //   !txHash.toLowerCase().includes('exceed');
+      // Validate txHash - it should be a valid hash, not an error message
+      const isValidTxHash =
+        txHash &&
+        typeof txHash === 'string' &&
+        txHash.length > 20 &&
+        !txHash.toLowerCase().includes('error') &&
+        !txHash.toLowerCase().includes('rate') &&
+        !txHash.toLowerCase().includes('limit') &&
+        !txHash.toLowerCase().includes('exceed');
 
-      // if (isValidTxHash) {
-      //   this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
-      // } else {
-      //   this.logger.warn(
-      //     `Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
-      //   );
-      // }
+      if (isValidTxHash) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[PURCHASE] Transaction sent to blockchain. TX Hash: ${txHash}`,
+        );
+        this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[PURCHASE] Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
+        );
+        this.logger.warn(
+          `Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
+        );
+      }
 
-      // // Wait for transaction to be processed
-      // await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
+      // Wait for transaction to be processed
+      // eslint-disable-next-line no-console
+      console.log(
+        `[PURCHASE] Waiting ${this.TRANSACTION_WAIT_TIME_MS}ms for transaction to be processed...`,
+      );
+      await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
 
-      // // 11. Confirm transaction with Fragment
-      // // Note: Even if txHash is invalid (rate limit), we still try to confirm
-      // // Fragment may have received the transaction despite the API error response
-      // if (!isValidTxHash) {
-      //   this.logger.warn(
-      //     `Transaction hash is invalid (${txHash || 'undefined'}), but proceeding with Fragment confirmation. This may indicate a rate limit issue.`,
-      //   );
-      // }
+      // 11. Confirm transaction with Fragment
+      // Note: Even if txHash is invalid (rate limit), we still try to confirm
+      // Fragment may have received the transaction despite the API error response
+      if (!isValidTxHash) {
+        this.logger.warn(
+          `Transaction hash is invalid (${txHash || 'undefined'}), but proceeding with Fragment confirmation. This may indicate a rate limit issue.`,
+        );
+      }
 
-      // this.logger.debug('Confirming transaction with Fragment...');
-      // const confirmed = await this.apiClient.confirmReq(
-      //   buyRequest.req_id,
-      //   signedBoc,
-      //   walletData.address,
-      //   walletData.stateInit,
-      //   walletData.publicKey,
-      // );
+      this.logger.debug('Confirming transaction with Fragment...');
+      const confirmed = await this.apiClient.confirmReq(
+        buyRequest.req_id,
+        signedBoc,
+        walletData.address,
+        walletData.stateInit,
+        walletData.publicKey,
+      );
 
-      // if (!confirmed) {
-      //   throw new Error('Transaction confirmation failed');
-      // }
+      if (!confirmed) {
+        throw new Error('Transaction confirmation failed');
+      }
 
-      // // Update purchase record in DB
-      // purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
-      // purchaseRecord.fragmentRequestId = buyRequest.req_id;
-      // purchaseRecord.txHash = isValidTxHash ? txHash : undefined;
-      // await purchaseRepo.save(purchaseRecord);
+      // Get final balances for comparison
+      // eslint-disable-next-line no-console
+      console.log(`[BALANCE] Getting final wallet balances...`);
+      const finalBalances = await this.stonfiSwapService.getWalletBalances(
+        walletData.address,
+      );
+      if (finalBalances) {
+        const finalTonBalance = BigInt(finalBalances.ton || '0');
+        const finalUsdtBalance = BigInt(finalBalances.usdt || '0');
 
-      // if (!isValidTxHash) {
-      //   this.logger.error(
-      //     `Purchase marked as completed but transaction may not have been sent to blockchain. Fragment request ID: ${buyRequest.req_id}. Stars may not arrive. Check Fragment dashboard and user account.`,
-      //   );
-      // }
+        const tonSpent = initialTonBalance - finalTonBalance;
+        const usdtSpent = initialUsdtBalance - finalUsdtBalance;
 
-      // const processingTime = Date.now() - startTime;
-      // const priceRub = amount * this.PRICE_PER_STAR_RUB;
+        const finalTonFormatted = (Number(finalTonBalance) / 1e9).toFixed(4);
+        const finalUsdtFormatted = (Number(finalUsdtBalance) / 1e6).toFixed(2);
+        const tonSpentFormatted = (Number(tonSpent) / 1e9).toFixed(4);
+        const usdtSpentFormatted = (Number(usdtSpent) / 1e6).toFixed(2);
 
-      // this.logger.log(
-      //   `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
-      // );
+        // eslint-disable-next-line no-console
+        console.log(
+          `[BALANCE] Final balances - TON: ${finalTonFormatted} TON (${finalTonBalance} nano), USDT: ${finalUsdtFormatted} USDT (${finalUsdtBalance} nano)`,
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          `[BALANCE] Balance changes - TON spent: ${tonSpentFormatted} TON, USDT spent: ${usdtSpentFormatted} USDT`,
+        );
 
-      // await this.notificationsService.notifyPurchaseSuccess(
-      //   userId,
-      //   recipientUsername,
-      //   amount,
-      //   priceRub,
-      //   this.PRICE_PER_STAR_RUB,
-      //   processingTime,
-      //   false,
-      //   isTestPurchase,
-      // );
+        this.logger.log(
+          `Final balances - TON: ${finalTonFormatted}, USDT: ${finalUsdtFormatted}`,
+        );
+        this.logger.log(
+          `Balance changes - TON spent: ${tonSpentFormatted}, USDT spent: ${usdtSpentFormatted}`,
+        );
 
-      // return {
-      //   success: true,
-      //   requestId: buyRequest.req_id,
-      //   txHash: txHash || undefined,
-      // };
+        if (swapPerformed) {
+          const tonFromSwap = tonSpent > BigInt(0) ? -tonSpent : BigInt(0);
+          // eslint-disable-next-line no-console
+          console.log(
+            `[BALANCE] Swap was performed. USDT spent: ${usdtSpentFormatted} USDT, TON received from swap: ~${(Number(tonFromSwap) / 1e9).toFixed(4)} TON`,
+          );
+          this.logger.log(
+            `Swap was performed. USDT spent: ${usdtSpentFormatted}, TON received from swap: ~${(Number(tonFromSwap) / 1e9).toFixed(4)}`,
+          );
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[BALANCE] No swap was performed. Purchase was made directly with TON.`,
+          );
+        }
+      }
+
+      // Update purchase record in DB
+      purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
+      purchaseRecord.fragmentRequestId = buyRequest.req_id;
+      purchaseRecord.txHash = isValidTxHash ? txHash : undefined;
+      await purchaseRepo.save(purchaseRecord);
+
+      if (!isValidTxHash) {
+        this.logger.error(
+          `Purchase marked as completed but transaction may not have been sent to blockchain. Fragment request ID: ${buyRequest.req_id}. Stars may not arrive. Check Fragment dashboard and user account.`,
+        );
+      }
+
+      const processingTime = Date.now() - (this.startTime || Date.now());
+      const priceRub = amount * this.PRICE_PER_STAR_RUB;
+
+      this.logger.log(
+        `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
+      );
+
+      await this.notificationsService.notifyPurchaseSuccess(
+        userId,
+        recipientUsername,
+        amount,
+        priceRub,
+        this.PRICE_PER_STAR_RUB,
+        processingTime,
+        false,
+        isTestPurchase,
+      );
+
+      return {
+        success: true,
+        requestId: buyRequest.req_id,
+        txHash: isValidTxHash ? txHash : undefined,
+      };
     } catch (error: unknown) {
       let errorMessage: string;
       if (error instanceof Error) {
@@ -483,19 +675,9 @@ export class StarsPurchaseService {
       this.logger.error(
         `Stars purchase failed for user ${userId}: ${errorMessage}`,
       );
-      // eslint-disable-next-line no-console
-      console.error(`[TEST] ERROR: Stars purchase failed: ${errorMessage}`);
-      // eslint-disable-next-line no-console
-      console.error(
-        `[TEST] ERROR Stack: ${error instanceof Error ? error.stack : 'N/A'}`,
-      );
 
       await this.notificationsService.notifyError('Fragment API', errorMessage);
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[TEST] Returning failure result: ${JSON.stringify({ success: false, error: errorMessage })}`,
-      );
       return {
         success: false,
         error: errorMessage,
@@ -503,8 +685,6 @@ export class StarsPurchaseService {
     } finally {
       // Always release the processing flag
       this.isProcessingPurchase = false;
-      // eslint-disable-next-line no-console
-      console.log(`[TEST] Released processing flag`);
     }
   }
 
@@ -573,23 +753,8 @@ export class StarsPurchaseService {
 
     // 4. If purchase was successful, increment test claims
     // Note: Admin also increments for tracking purposes
-    // eslint-disable-next-line no-console
-    console.log(
-      `[TEST] Purchase result: success=${result.success}, isAdmin=${isAdmin}, will increment: ${result.success}`,
-    );
     if (result.success) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[TEST] Incrementing test claims for user ${userId} (isAdmin: ${isAdmin})`,
-      );
       await this.whitelistService.incrementTestClaims(userId);
-      // eslint-disable-next-line no-console
-      console.log(`[TEST] Test claims incremented successfully`);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[TEST] Skipping test claims increment. success=${result.success}`,
-      );
     }
 
     return result;
@@ -840,121 +1005,6 @@ export class StarsPurchaseService {
       // Don't throw - transaction might still be processed
       return undefined;
     }
-  }
-
-  /**
-   * Check and log balances without performing swap/purchase
-   * Used for testing balance detection
-   */
-  private async checkAndLogBalances(
-    walletAddress: string,
-    requiredTonAmount: string,
-  ): Promise<void> {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[BALANCE CHECK] Starting balance check. Wallet: ${walletAddress}, Required: ${requiredTonAmount} nano TON`,
-    );
-
-    // Get wallet balances
-    // eslint-disable-next-line no-console
-    console.log('[BALANCE CHECK] Fetching wallet balances...');
-    const balances =
-      await this.stonfiSwapService.getWalletBalances(walletAddress);
-
-    // eslint-disable-next-line no-console
-    console.log(
-      `[BALANCE CHECK] Balances received: ${JSON.stringify(balances)}`,
-    );
-
-    if (!balances) {
-      this.logger.error('[BALANCE CHECK] Failed to get wallet balances');
-      throw new Error('Failed to get wallet balances');
-    }
-
-    // Ensure all values are defined and valid before converting to BigInt
-    const tonBalanceStr = balances.ton || '0';
-    const usdtBalanceStr = balances.usdt || '0';
-    const requiredTonStr = requiredTonAmount || '0';
-    const minTonForFeesStr = this.config.minTonForFees || '100000000';
-
-    if (!requiredTonStr || requiredTonStr === '0') {
-      throw new Error('Required TON amount is invalid or zero');
-    }
-
-    const tonBalance = BigInt(tonBalanceStr);
-    const usdtBalance = BigInt(usdtBalanceStr);
-    const requiredTon = BigInt(requiredTonStr);
-
-    // Add minimum TON for fees
-    const minTonForFees = BigInt(minTonForFeesStr);
-    const totalRequired = requiredTon + minTonForFees;
-
-    const tonBalanceFormatted = (Number(tonBalance) / 1e9).toFixed(4);
-    const usdtBalanceFormatted = (Number(usdtBalance) / 1e6).toFixed(2);
-    const requiredTonFormatted = (Number(totalRequired) / 1e9).toFixed(4);
-
-    // eslint-disable-next-line no-console
-    console.log('=== BALANCE CHECK RESULTS ===');
-    // eslint-disable-next-line no-console
-    console.log(`TON Balance: ${tonBalanceFormatted} TON (${tonBalance} nano)`);
-    // eslint-disable-next-line no-console
-    console.log(
-      `USDT Balance: ${usdtBalanceFormatted} USDT (${usdtBalance} nano)`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(
-      `Required: ${requiredTonFormatted} TON (${totalRequired} nano)`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(`TON sufficient: ${tonBalance >= totalRequired}`);
-    // eslint-disable-next-line no-console
-    console.log(`USDT available: ${usdtBalance > BigInt(0)}`);
-
-    if (usdtBalance > BigInt(0)) {
-      // Get quote for swap
-      const quote = await this.stonfiSwapService.getSwapQuote(
-        totalRequired.toString(),
-      );
-
-      if (quote && quote.fromAmount) {
-        const requiredUsdt = BigInt(quote.fromAmount);
-        const requiredUsdtFormatted = (Number(requiredUsdt) / 1e6).toFixed(2);
-        // eslint-disable-next-line no-console
-        console.log(
-          `Swap quote: ${requiredUsdtFormatted} USDT needed for ${requiredTonFormatted} TON`,
-        );
-        // eslint-disable-next-line no-console
-        console.log(`USDT sufficient for swap: ${usdtBalance >= requiredUsdt}`);
-
-        // Perform swap if USDT balance is sufficient
-        if (usdtBalance >= requiredUsdt) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[SWAP] USDT balance sufficient. Performing swap: ${requiredUsdtFormatted} USDT -> ${requiredTonFormatted} TON`,
-          );
-
-          const swapResult = await this.stonfiSwapService.swapUsdtToTon(
-            requiredUsdt.toString(),
-            quote.minToAmount,
-          );
-
-          if (swapResult.success) {
-            // eslint-disable-next-line no-console
-            console.log(
-              `[SWAP] Swap completed successfully. TX Hash: ${swapResult.txHash}`,
-            );
-          } else {
-            // eslint-disable-next-line no-console
-            console.error(
-              `[SWAP] Swap failed: ${swapResult.error || 'Unknown error'}`,
-            );
-          }
-        }
-      }
-    }
-
-    // eslint-disable-next-line no-console
-    console.log('=============================');
   }
 
   /**
