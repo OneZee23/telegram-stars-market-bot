@@ -1,6 +1,5 @@
 import { FragmentModule } from '@modules/fragment/fragment.module';
 import { TelegramCoreModule } from '@modules/telegram-core/telegram-core.module';
-import { UserModule } from '@modules/user/user.module';
 import { Logger, Module } from '@nestjs/common';
 import { BotCommandHandler } from './handlers/bot-command.handler';
 import { CallbackQueryHandler } from './handlers/callback-query.handler';
@@ -12,7 +11,7 @@ import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Module({
-  imports: [TelegramCoreModule, UserModule, FragmentModule],
+  imports: [TelegramCoreModule, FragmentModule],
   providers: [
     TelegramBotService,
     MessageManagementService,

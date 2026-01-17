@@ -1,3 +1,4 @@
+import { ADMIN_USER_ID } from '@common/constants';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
@@ -154,8 +155,11 @@ export class CallbackQueryHandler {
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
 
-    if (isWhitelisted && canClaim) {
-      // For whitelisted users: show only 50 stars button
+    // Admin can always claim, regardless of previous claims
+    const isAdmin = userId === ADMIN_USER_ID;
+
+    if (isWhitelisted && (canClaim || isAdmin)) {
+      // For whitelisted users (or admin): show only 50 stars button
       const text = t.buyStars.testModeSelectAmount;
 
       const keyboard = KeyboardBuilder.createInlineKeyboard([
@@ -169,8 +173,8 @@ export class CallbackQueryHandler {
         text,
         keyboard,
       );
-    } else if (isWhitelisted && !canClaim) {
-      // User already claimed test stars
+    } else if (isWhitelisted && !canClaim && !isAdmin) {
+      // User already claimed test stars (but not admin)
       const message = t.buyStars.alreadyClaimed
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
@@ -191,7 +195,6 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
     userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
   ): Promise<void> {
-    // Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
@@ -221,14 +224,29 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show processing message
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.buyStars.checkingBalance,
+    );
+
+    const balanceCheck =
+      await this.starsPurchaseService.checkBalanceBeforePurchase(50);
+    if (!balanceCheck.canPurchase) {
+      const errorText =
+        balanceCheck.error === 'insufficient_balance'
+          ? t.buyStars.insufficientBalance
+          : t.buyStars.balanceCheckFailed;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
     await this.messageManagementService.editMessage(
       ctx,
       userId,
       t.buyStars.processing,
     );
 
-    // Purchase 50 test stars
     this.logger.log(
       `User ${userId} (@${username}) initiated test purchase of 50 stars`,
     );
@@ -238,17 +256,24 @@ export class CallbackQueryHandler {
     );
 
     if (result.success) {
-      // Success message with instructions
       const successText = t.buyStars.testPurchaseSuccess
         .replace('{channel}', 'https://t.me/onezee_co')
         .replace('{post}', 'https://t.me/onezee_co/49');
 
       await this.messageManagementService.editMessage(ctx, userId, successText);
     } else {
-      // Error message
       let errorText: string;
       if (result.error === 'QUEUE_BUSY') {
         errorText = t.buyStars.queueBusy;
+      } else if (
+        result.error === 'insufficient_funds' ||
+        result.error === 'swap_failed_insufficient_ton'
+      ) {
+        errorText = t.buyStars.purchaseFailedInsufficientFunds;
+      } else if (result.error === 'confirmation_failed') {
+        errorText = t.buyStars.purchaseFailedConfirmation;
+      } else if (result.error === 'transaction_not_sent') {
+        errorText = t.buyStars.purchaseFailedTransactionNotSent;
       } else {
         errorText = t.buyStars.purchaseError.replace(
           '{error}',
