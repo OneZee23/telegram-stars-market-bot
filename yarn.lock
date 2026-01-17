@@ -927,6 +927,17 @@
     decamelize-keys "2.0.1"
     ofetch "1.4.1"
 
+"@ston-fi/omniston-sdk@^0.7.8":
+  version "0.7.8"
+  resolved "https://registry.yarnpkg.com/@ston-fi/omniston-sdk/-/omniston-sdk-0.7.8.tgz#f6c36b714496498964360e6c5ba3341566e92817"
+  integrity sha512-2qXKbFGgwcPEVxTGBqvOjoH8914KAuXzUN7Id1KGe1rCLafZG8OKRg1u+c72ER/vthPhAMANWUsnitjhxoXXvg==
+  dependencies:
+    isomorphic-ws "5.0.0"
+    json-rpc-2.0 "1.7.0"
+    rxjs "7.8.1"
+    type-fest "5.0.1"
+    ws "8.17.1"
+
 "@ston-fi/sdk@^1.0.0":
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/@ston-fi/sdk/-/sdk-1.2.1.tgz#879244d1bc888beb544bb787917094b8017679ab"
@@ -4019,6 +4030,11 @@ isomorphic-webcrypto@2.3.8:
     expo-random "*"
     react-native-securerandom "^0.1.1"
 
+isomorphic-ws@5.0.0:
+  version "5.0.0"
+  resolved "https://registry.yarnpkg.com/isomorphic-ws/-/isomorphic-ws-5.0.0.tgz#e5529148912ecb9b451b46ed44d53dae1ce04bbf"
+  integrity sha512-muId7Zzn9ywDsyXgTIafTry2sV3nySZeUDe6YedVd1Hvuuep5AsIlqK+XefWpYTyJG5e503F2xIuT2lcU6rCSw==
+
 istanbul-lib-coverage@^3.0.0, istanbul-lib-coverage@^3.2.0:
   version "3.2.2"
   resolved "https://registry.yarnpkg.com/istanbul-lib-coverage/-/istanbul-lib-coverage-3.2.2.tgz#2d166c4b0644d43a39f04bf6c2edd1e585f31756"
@@ -4487,6 +4503,11 @@ json-parse-even-better-errors@^2.3.0, json-parse-even-better-errors@^2.3.1:
   version "2.3.1"
   resolved "https://registry.yarnpkg.com/json-parse-even-better-errors/-/json-parse-even-better-errors-2.3.1.tgz#7c47805a94319928e05777405dc12e1f7a4ee02d"
   integrity sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==
+
+json-rpc-2.0@1.7.0:
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/json-rpc-2.0/-/json-rpc-2.0-1.7.0.tgz#840deb0bc168463e12bceb462f7fe225e793fc17"
+  integrity sha512-asnLgC1qD5ytP+fvBP8uL0rvj+l8P6iYICbzZ8dVxCpESffVjzA7KkYkbKCIbavs7cllwH1ZUaNtJwphdeRqpg==
 
 json-schema-traverse@^0.4.1:
   version "0.4.1"
@@ -6122,6 +6143,11 @@ synckit@^0.11.7:
   dependencies:
     "@pkgr/core" "^0.2.9"
 
+tagged-tag@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/tagged-tag/-/tagged-tag-1.0.0.tgz#a0b5917c2864cba54841495abfa3f6b13edcf4d6"
+  integrity sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==
+
 tapable@^2.1.1, tapable@^2.2.0, tapable@^2.2.1:
   version "2.3.0"
   resolved "https://registry.yarnpkg.com/tapable/-/tapable-2.3.0.tgz#7e3ea6d5ca31ba8e078b560f0d83ce9a14aa8be6"
@@ -6389,6 +6415,13 @@ type-detect@4.0.8:
   version "4.0.8"
   resolved "https://registry.yarnpkg.com/type-detect/-/type-detect-4.0.8.tgz#7646fb5f18871cfbb7749e69bd39a6388eb7450c"
   integrity sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==
+
+type-fest@5.0.1:
+  version "5.0.1"
+  resolved "https://registry.yarnpkg.com/type-fest/-/type-fest-5.0.1.tgz#546c87966765f88f4f36e0521be4b3d0215b4cab"
+  integrity sha512-9MpwAI52m8H6ssA542UxSLnSiSD2dsC3/L85g6hVubLSXd82wdI80eZwTWhdOfN67NlA+D+oipAs1MlcTcu3KA==
+  dependencies:
+    tagged-tag "^1.0.0"
 
 type-fest@^0.20.2:
   version "0.20.2"
@@ -6820,6 +6853,11 @@ write-file-atomic@^4.0.2:
   dependencies:
     imurmurhash "^0.1.4"
     signal-exit "^3.0.7"
+
+ws@8.17.1:
+  version "8.17.1"
+  resolved "https://registry.yarnpkg.com/ws/-/ws-8.17.1.tgz#9293da530bb548febc95371d90f9c878727d919b"
+  integrity sha512-6XQFvXTkbfUOZOKKILFG1PDK2NDQs4azKQl26T0YS5CxqWLgXajbPZ+h4gZekJyRqFU8pvnbAbbs/3TgRPy+GQ==
 
 xml2js@^0.4.23:
   version "0.4.23"

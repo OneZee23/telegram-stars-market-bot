@@ -37,6 +37,7 @@
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/typeorm": "^9.0.1",
     "@ston-fi/api": "^0.29.0",
+    "@ston-fi/omniston-sdk": "^0.7.8",
     "@ston-fi/sdk": "^1.0.0",
     "@ton/core": "^0.62.1",
     "@ton/crypto": "^3.3.0",

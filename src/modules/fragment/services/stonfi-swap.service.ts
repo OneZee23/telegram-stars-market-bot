@@ -3,7 +3,12 @@ import { Injectable, Logger } from '@nestjs/common';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { StonApiClient } from '@ston-fi/api';
 // eslint-disable-next-line import/no-extraneous-dependencies
-import { DEX, pTON } from '@ston-fi/sdk';
+import {
+  Blockchain,
+  GaslessSettlement,
+  Omniston,
+  SettlementMethod,
+} from '@ston-fi/omniston-sdk';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { Address, TonClient } from '@ton/ton';
 import { mnemonicToPrivateKey } from 'ton-crypto';
@@ -48,6 +53,8 @@ export class StonfiSwapService {
 
   private readonly tonClient: TonClient;
 
+  private readonly omniston: Omniston;
+
   private readonly TON_NATIVE_ADDRESS =
     'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
 
@@ -61,6 +68,10 @@ export class StonfiSwapService {
       endpoint:
         this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
       apiKey: this.config.toncenterApiKey,
+    });
+    // Initialize Omniston SDK
+    this.omniston = new Omniston({
+      apiUrl: 'wss://omni-ws.ston.fi',
     });
   }
 
@@ -292,7 +303,7 @@ export class StonfiSwapService {
   }
 
   /**
-   * Execute swap: USDT -> TON
+   * Execute swap: USDT -> TON using Omniston protocol
    * @param usdtAmount Amount of USDT to swap (in nano)
    * @param minTonAmount Minimum TON to receive (in nano)
    * @returns Swap result with transaction hash
@@ -313,113 +324,200 @@ export class StonfiSwapService {
 
       // eslint-disable-next-line no-console
       console.log(
-        `[SWAP] Starting swap: ${usdtAmount} nano USDT -> min ${minTonAmount} nano TON`,
+        `[SWAP] Starting swap via Omniston: ${usdtAmount} nano USDT -> min ${minTonAmount} nano TON`,
       );
       this.logger.log(
-        `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON)`,
+        `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON) via Omniston`,
       );
 
-      // Convert USDT amount from nano to units for simulation
-      const usdtAmountFloat = parseFloat(usdtAmount) / 10 ** this.USDT_DECIMALS;
-      const usdtUnits = Math.floor(usdtAmountFloat * 10 ** this.USDT_DECIMALS);
-      const slippageTolerance = this.getSlippageTolerance();
-
+      // Request quote from Omniston
       // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] Simulating swap with ${usdtUnits} nano USDT, slippage: ${slippageTolerance}`,
-      );
+      console.log(`[SWAP] Requesting quote from Omniston...`);
 
-      // Simulate swap to get transaction parameters
-      const simulationResult = await this.stonApiClient.simulateSwap({
-        offerAddress: this.config.usdtJettonAddress,
-        askAddress: this.TON_NATIVE_ADDRESS,
-        offerUnits: usdtUnits.toString(),
-        slippageTolerance: slippageTolerance.toString(),
+      const quoteObservable = this.omniston.requestForQuote({
+        settlementMethods: [SettlementMethod.SETTLEMENT_METHOD_SWAP],
+        bidAssetAddress: {
+          blockchain: Blockchain.TON,
+          address: this.config.usdtJettonAddress,
+        },
+        askAssetAddress: {
+          blockchain: Blockchain.TON,
+          address: this.TON_NATIVE_ADDRESS,
+        },
+        amount: {
+          bidUnits: usdtAmount,
+        },
+        settlementParams: {
+          maxPriceSlippageBps: this.config.swapSlippageTolerance * 100, // Convert % to basis points
+          gaslessSettlement: GaslessSettlement.GASLESS_SETTLEMENT_POSSIBLE,
+          maxOutgoingMessages: 4, // Default for TON
+          flexibleReferrerFee: true,
+        },
       });
 
-      if (!simulationResult?.router) {
-        throw new Error('Invalid simulation result from STON.fi');
+      // Wait for the best quote (with timeout)
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Waiting for quote (timeout: 10s)...`);
+      // Omniston SDK returns RxJS Observable - convert to Promise with timeout
+      const quoteEvents = await new Promise<{
+        type: string;
+        quote?: any;
+        rfqId?: string;
+      }>((resolve, reject) => {
+        let subscription: any;
+        const timeoutId = setTimeout(() => {
+          if (subscription) {
+            subscription.unsubscribe();
+          }
+          reject(new Error('Quote request timeout'));
+        }, 10000);
+
+        subscription = (quoteObservable as any).subscribe({
+          next: (event: any) => {
+            if (event.type === 'quoteUpdated') {
+              clearTimeout(timeoutId);
+              subscription.unsubscribe();
+              resolve(event);
+            } else if (event.type === 'ack') {
+              // eslint-disable-next-line no-console
+              console.log(`[SWAP] Quote request acknowledged: ${event.rfqId}`);
+            }
+          },
+          error: (error: unknown) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          },
+        });
+      });
+
+      if (quoteEvents.type !== 'quoteUpdated' || !quoteEvents.quote) {
+        throw new Error(`Failed to get quote: ${quoteEvents.type}`);
+      }
+
+      const { quote } = quoteEvents;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] Quote received: ${quote.bidUnits} USDT -> ${quote.askUnits} TON (quoteId: ${quote.quoteId})`,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SWAP] Resolver: ${quote.resolverName} (${quote.resolverId})`,
+      );
+
+      // Verify that the quote meets minimum requirements
+      const quoteAskAmount = BigInt(quote.askUnits);
+      const minTonAmountBigInt = BigInt(minTonAmount);
+      if (quoteAskAmount < minTonAmountBigInt) {
+        throw new Error(
+          `Quote amount ${quote.askUnits} is less than minimum required ${minTonAmount}`,
+        );
+      }
+
+      // Build transaction using Omniston
+      // eslint-disable-next-line no-console
+      console.log(`[SWAP] Building transaction via Omniston...`);
+      const tx = await this.omniston.buildTransfer({
+        quote,
+        sourceAddress: {
+          blockchain: Blockchain.TON,
+          address: walletData.address,
+        },
+        destinationAddress: {
+          blockchain: Blockchain.TON,
+          address: walletData.address,
+        },
+        gasExcessAddress: {
+          blockchain: Blockchain.TON,
+          address: walletData.address,
+        },
+        useRecommendedSlippage: true,
+      });
+
+      const messages = tx.ton?.messages ?? [];
+      if (messages.length === 0) {
+        throw new Error('No messages in transaction');
       }
 
       // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] Simulation result: ${simulationResult.minAskUnits} nano TON`,
+      console.log(`[SWAP] Transaction built: ${messages.length} message(s)`);
+
+      // Create custom Sender implementation using @ton/ton for signing
+      // eslint-disable-next-line import/no-extraneous-dependencies
+      const { WalletContractV3R2, internal, Cell } = await import('@ton/ton');
+      // eslint-disable-next-line import/no-extraneous-dependencies
+      const { keyPairFromSecretKey } = await import('@ton/crypto');
+
+      // Get key pair from private key (convert Uint8Array to Buffer if needed)
+      const privateKeyBuffer = Buffer.from(walletData.privateKey);
+      const keyPair = keyPairFromSecretKey(privateKeyBuffer);
+
+      // Create wallet contract
+      const walletContract = this.tonClient.open(
+        WalletContractV3R2.create({
+          publicKey: keyPair.publicKey,
+          workchain: 0,
+        }),
       );
 
-      // Create DEX contracts using SDK
-      const { router: routerInfo } = simulationResult;
-      // Use DEX v1 Router
-      const RouterClass = DEX.v1.Router;
-      const routerContract = RouterClass.create(routerInfo.address);
-      // Create pTON contract - pass the contract instance, not opened
-      const PtonClass = pTON.v1;
-      const proxyTonContract = PtonClass.create(routerInfo.ptonMasterAddress);
+      // Get seqno for the transaction
+      const seqno = await walletContract.getSeqno();
 
-      // Get transaction parameters
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Getting transaction parameters...`);
-      // getSwapJettonToTonTxParams returns SenderArguments: { to, value, body }
-      const routerAddress = Address.parse(routerInfo.address);
-      const senderArgs = await routerContract.getSwapJettonToTonTxParams(
-        this.tonClient.provider(routerAddress),
-        {
-          userWalletAddress: walletData.address,
-          offerJettonAddress: this.config.usdtJettonAddress,
-          offerAmount: simulationResult.offerUnits,
-          minAskAmount: simulationResult.minAskUnits,
-          proxyTon: proxyTonContract,
-          queryId: Date.now(),
-        },
-      );
+      // Parse and send each message
+      // Note: We need to send all messages in a single transaction, so we collect them first
+      const messageList = [];
+      for (const message of messages) {
+        const targetAddress = Address.parse(message.targetAddress);
+        const sendAmount = BigInt(message.sendAmount);
+        let body: InstanceType<typeof Cell> | undefined;
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SWAP] SenderArguments: to=${senderArgs.to.toString()}, value=${senderArgs.value.toString()}`,
-      );
+        if (message.payload) {
+          // Parse payload from hex or base64
+          let payloadBytes: Buffer;
+          if (message.payload.startsWith('0x')) {
+            // Hex format
+            payloadBytes = Buffer.from(message.payload.slice(2), 'hex');
+          } else {
+            // Base64 format
+            payloadBytes = Buffer.from(message.payload, 'base64');
+          }
+          const [cell] = Cell.fromBoc(payloadBytes);
+          body = cell as InstanceType<typeof Cell>;
+        }
 
-      // Convert SenderArguments to messages format for signing
-      // SenderArguments has: { to: Address, value: bigint, body: Cell }
-      const { httpProvider, tonWebInstance } = this.createTonWebInstance();
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Signing transaction...`);
-      const signedTx = await this.signTransactionFromParams(
-        {
-          messages: [
-            {
-              address: senderArgs.to.toString(),
-              amount: senderArgs.value.toString(),
-              payload: senderArgs.body
-                ? tonWebInstance.utils.bytesToBase64(
-                    await senderArgs.body.toBoc(),
-                  )
-                : undefined,
-            },
-          ],
-        },
-        walletData.privateKey,
-        httpProvider,
-        tonWebInstance,
-      );
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SWAP] Preparing message to ${targetAddress.toString()}, amount: ${sendAmount.toString()}`,
+        );
 
-      // eslint-disable-next-line no-console
-      console.log(`[SWAP] Sending transaction to blockchain...`);
-      const txHash = await tonWebInstance.provider.sendBoc(signedTx);
-      const hash = this.extractTxHash(txHash);
-
-      if (!hash || hash.toLowerCase().includes('error')) {
-        throw new Error(`Transaction failed: ${hash || 'unknown error'}`);
+        messageList.push(
+          internal({
+            to: targetAddress,
+            value: sendAmount,
+            body,
+            bounce: true, // Set bounce to true for jetton transfers
+          }),
+        );
       }
 
+      // Send all messages in a single transaction
+      await walletContract.sendTransfer({
+        seqno,
+        secretKey: privateKeyBuffer,
+        messages: messageList,
+      });
+
       // eslint-disable-next-line no-console
-      console.log(`[SWAP] Transaction sent. TX Hash: ${hash}`);
-      this.logger.log(`Swap transaction sent. TX Hash: ${hash}`);
+      console.log(`[SWAP] Transaction sent via @ton/ton`);
+      this.logger.log(
+        `Swap transaction sent via Omniston. Quote ID: ${quote.quoteId}`,
+      );
 
       // Wait for transaction confirmation
       await this.waitForTransactionConfirmation();
 
       return {
         success: true,
-        txHash: hash,
+        txHash: `omniston-${quote.quoteId}`, // Use quote ID as identifier
       };
     } catch (error: unknown) {
       const errorMessage =
