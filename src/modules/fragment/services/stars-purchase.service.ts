@@ -1,8 +1,10 @@
 import { ADMIN_USER_ID } from '@common/constants/admin.constants';
 import { NotificationsService } from '@modules/notifications/notifications.service';
+import { StonfiSwapService } from '@modules/ton/providers/stonfi-swap.provider';
 import { TonBalanceProvider } from '@modules/ton/providers/ton-balance.provider';
 import { TonTransactionProvider } from '@modules/ton/providers/ton-transaction.provider';
 import { TonWalletProvider } from '@modules/ton/providers/ton-wallet.provider';
+import { TonConfig } from '@modules/ton/ton.config';
 import { Transaction, WalletData } from '@modules/ton/ton.iface';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { Injectable, Logger } from '@nestjs/common';
@@ -12,9 +14,7 @@ import {
   StarsPurchaseEntity,
   StarsPurchaseStatus,
 } from '../entities/stars-purchase.entity';
-import { FragmentConfig } from '../fragment.config';
 import { FragmentApiClientService } from './fragment-api-client.service';
-import { StonfiSwapService } from './stonfi-swap.service';
 
 /**
  * Result of stars purchase operation
@@ -62,7 +62,7 @@ export class StarsPurchaseService {
   constructor(
     private readonly apiClient: FragmentApiClientService,
     private readonly whitelistService: WhitelistService,
-    private readonly config: FragmentConfig,
+    private readonly tonConfig: TonConfig,
     private readonly notificationsService: NotificationsService,
     private readonly stonfiSwapService: StonfiSwapService,
     private readonly tonWalletProvider: TonWalletProvider,
@@ -476,7 +476,7 @@ export class StarsPurchaseService {
       `Initial balances - TON: ${initialTonFormatted}, USDT: ${initialUsdtFormatted}`,
     );
 
-    const minTonForFees = BigInt(this.config.minTonForFees || '100000000');
+    const minTonForFees = BigInt(this.tonConfig.minTonForFees || '100000000');
     const requiredTonBigInt = BigInt(requiredTonAmount);
     const totalRequiredTon = requiredTonBigInt + minTonForFees;
 
