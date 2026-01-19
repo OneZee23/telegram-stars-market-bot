@@ -1,3 +1,8 @@
+import {
+  buildAmountCallback as buildAmountCallbackFromConstants,
+  buildPaymentCallback as buildPaymentCallbackFromConstants,
+} from '../constants/callback-data.constants';
+
 /**
  * Utility functions for parsing and building callback data
  */
@@ -35,17 +40,19 @@ export function isPaymentConfirmationCallback(callbackData: string): boolean {
 
 /**
  * Build callback data for amount selection
+ * @deprecated Use buildAmountCallback from constants/callback-data.constants instead
  */
 export function buildAmountCallback(
   amount: number,
   isTest: boolean = false,
 ): string {
-  return isTest ? `amount_${amount}_test` : `amount_${amount}`;
+  return buildAmountCallbackFromConstants(amount, isTest);
 }
 
 /**
  * Build callback data for payment confirmation
+ * @deprecated Use buildPaymentCallback from constants/callback-data.constants instead
  */
 export function buildPaymentCallback(amount: number): string {
-  return `confirm_payment_${amount}`;
+  return buildPaymentCallbackFromConstants(amount);
 }

@@ -8,12 +8,15 @@ import {
   isAmountAvailable,
   isTestClaimAmount,
 } from '../config/star-amounts.config';
+import {
+  buildAmountCallback,
+  buildPaymentCallback,
+  CallbackData,
+} from '../constants/callback-data.constants';
 import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
 import { UserState, UserStateService } from '../services/user-state.service';
 import {
-  buildAmountCallback,
-  buildPaymentCallback,
   isAmountCallback,
   isPaymentConfirmationCallback,
   parseAmountFromCallback,
@@ -79,16 +82,16 @@ export class CallbackQueryHandler {
     }
 
     switch (callbackData) {
-      case 'help':
+      case CallbackData.HELP:
         await this.handleHelp(ctx, userContext.userId, t);
         break;
-      case 'buy_stars':
+      case CallbackData.BUY_STARS:
         await this.handleBuyStars(ctx, userContext.userId, t);
         break;
-      case 'buy_for_myself':
+      case CallbackData.BUY_FOR_MYSELF:
         await this.handleBuyForMyself(ctx, userContext.userId, t, userContext);
         break;
-      case 'buy_for_other':
+      case CallbackData.BUY_FOR_OTHER:
         if (ctx.callbackQuery && 'answerCallbackQuery' in ctx) {
           await ctx.answerCbQuery(
             t.buyStars.forOtherLocked.replace('🔒 ', ''),
@@ -98,10 +101,10 @@ export class CallbackQueryHandler {
           );
         }
         break;
-      case 'amount_custom':
+      case CallbackData.AMOUNT_CUSTOM:
         await this.handleCustomAmount(ctx, userContext.userId, t);
         break;
-      case 'back_to_main':
+      case CallbackData.BACK_TO_MAIN:
         await this.handleBackToMain(ctx, userContext.userId, t);
         break;
       default:
@@ -118,7 +121,7 @@ export class CallbackQueryHandler {
     const text = `${t.help.title}\n\n${t.help.description}\n\n${channelLink}`;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.back, callback_data: 'back_to_main' }],
+      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
     ]);
 
     await this.messageManagementService.editMessage(
@@ -137,9 +140,19 @@ export class CallbackQueryHandler {
     const text = t.buyStars.selectRecipient;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.buyStars.forMyself, callback_data: 'buy_for_myself' }],
-      [{ text: t.buyStars.forOtherLocked, callback_data: 'buy_for_other' }],
-      [{ text: t.mainMenu.back, callback_data: 'back_to_main' }],
+      [
+        {
+          text: t.buyStars.forMyself,
+          callback_data: CallbackData.BUY_FOR_MYSELF,
+        },
+      ],
+      [
+        {
+          text: t.buyStars.forOtherLocked,
+          callback_data: CallbackData.BUY_FOR_OTHER,
+        },
+      ],
+      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
     ]);
 
     await this.messageManagementService.editMessage(
@@ -193,7 +206,7 @@ export class CallbackQueryHandler {
 
       const keyboard = KeyboardBuilder.createInlineKeyboard([
         ...buttons,
-        [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
+        [{ text: t.mainMenu.back, callback_data: CallbackData.BUY_STARS }],
       ]);
 
       await this.messageManagementService.editMessage(
@@ -299,7 +312,7 @@ export class CallbackQueryHandler {
       [
         {
           text: t.mainMenu.back,
-          callback_data: 'buy_for_myself',
+          callback_data: CallbackData.BUY_FOR_MYSELF,
         },
       ],
     ]);
@@ -432,8 +445,13 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
   ): Promise<void> {
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.help, callback_data: 'help' }],
-      [{ text: t.mainMenu.buyStars, callback_data: 'buy_stars' }],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
+      [
+        {
+          text: t.mainMenu.buyStars,
+          callback_data: CallbackData.BUY_STARS,
+        },
+      ],
     ]);
 
     await this.messageManagementService.editMessage(
