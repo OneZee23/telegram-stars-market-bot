@@ -30,6 +30,10 @@ export interface Translations {
     alreadyClaimed: string;
     queueBusy: string;
     only50StarsAvailable: string;
+    insufficientBalance: string;
+    paymentRequired: string;
+    payButton: string;
+    purchaseProcessing: string;
   };
   errors: {
     usernameRequired: string;
@@ -98,6 +102,17 @@ export const translations: Record<string, Translations> = {
         '🎁 Тестовый режим\n\n' +
         'В данный момент для тестирования доступна только покупка 50 звезд.\n\n' +
         'Вернитесь назад и выберите "50 ⭐" для получения бесплатных тестовых звезд.',
+      insufficientBalance:
+        '❌ Недостаточно средств\n\n' +
+        'На сервере недостаточно средств для обработки покупки. Пожалуйста, попробуйте позже или свяжитесь с администратором @onezee123.',
+      paymentRequired:
+        '💳 Оплата {amount} звезд\n\n' +
+        'Нажмите кнопку ниже для оплаты через ЮKassa (СБП):',
+      payButton: '💳 Оплатить через ЮKassa',
+      purchaseProcessing:
+        '⏳ Идет покупка и отправка звезд...\n\n' +
+        'Пожалуйста, подождите от 1 минуты до 5 минут (в редких случаях).\n\n' +
+        'Если процесс займет дольше, напишите администратору: @onezee123',
     },
     errors: {
       usernameRequired:
@@ -170,6 +185,17 @@ export const translations: Record<string, Translations> = {
         '🎁 Test Mode\n\n' +
         'Currently, only 50 stars purchase is available for testing.\n\n' +
         'Go back and select "50 ⭐" to get free test stars.',
+      insufficientBalance:
+        '❌ Insufficient funds\n\n' +
+        'Server has insufficient funds to process the purchase. Please try again later or contact administrator @onezee123.',
+      paymentRequired:
+        '💳 Payment for {amount} stars\n\n' +
+        'Click the button below to pay via YooKassa (SBP):',
+      payButton: '💳 Pay via YooKassa',
+      purchaseProcessing:
+        '⏳ Purchase and sending stars in progress...\n\n' +
+        'Please wait from 1 minute to 5 minutes (in rare cases).\n\n' +
+        'If the process takes longer, contact administrator: @onezee123',
     },
     errors: {
       usernameRequired:
