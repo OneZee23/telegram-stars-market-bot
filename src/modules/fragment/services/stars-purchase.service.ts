@@ -1,18 +1,19 @@
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, import/no-extraneous-dependencies, @typescript-eslint/no-require-imports */
 import { ADMIN_USER_ID } from '@common/constants/admin.constants';
 import { NotificationsService } from '@modules/notifications/notifications.service';
+import { StonfiSwapService } from '@modules/ton/providers/stonfi-swap.provider';
+import { TonBalanceProvider } from '@modules/ton/providers/ton-balance.provider';
+import { TonTransactionProvider } from '@modules/ton/providers/ton-transaction.provider';
+import { TonWalletProvider } from '@modules/ton/providers/ton-wallet.provider';
+import { TonConfig } from '@modules/ton/ton.config';
+import { Transaction, WalletData } from '@modules/ton/ton.iface';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
-import { mnemonicToPrivateKey } from 'ton-crypto';
-import * as TonWeb from 'tonweb';
-import * as nacl from 'tweetnacl';
 import { EntityManager } from 'typeorm';
 import {
   StarsPurchaseEntity,
   StarsPurchaseStatus,
 } from '../entities/stars-purchase.entity';
-import { FragmentConfig } from '../fragment.config';
 import { FragmentApiClientService } from './fragment-api-client.service';
 
 /**
@@ -23,73 +24,6 @@ export interface PurchaseResult {
   requestId?: string;
   txHash?: string;
   error?: string;
-}
-
-/**
- * Extended TonWeb interface to include missing type definitions
- */
-interface TonWebExtended {
-  wallet: {
-    all: {
-      v3R2: new (
-        provider: HttpProvider,
-        options: { publicKey: Uint8Array },
-      ) => Wallet;
-    };
-  };
-  HttpProvider: new (
-    url: string,
-    options?: { apiKey?: string },
-  ) => HttpProvider;
-  boc: {
-    CellBuilder: new () => CellBuilder;
-  };
-  utils: {
-    Address: new (address: string) => Address;
-    bytesToBase64: (bytes: Uint8Array) => string;
-    bytesToHex: (bytes: Uint8Array) => string;
-    toNano: (amount: string) => string;
-    base64ToBytes: (base64: string) => Uint8Array;
-    signCell: (cell: Cell, privateKey: Uint8Array) => Promise<Cell>;
-  };
-}
-
-interface HttpProvider {
-  sendBoc: (boc: string) => Promise<
-    | string
-    | {
-        hash?: string;
-        tx_hash?: string;
-        transaction_id?: string;
-        result?: string;
-      }
-  >;
-}
-
-interface Wallet {
-  getAddress: () => Promise<Address>;
-  createStateInit: () => Promise<{ stateInit: Cell }>;
-}
-
-interface Address {
-  toString: (
-    bounceable: boolean,
-    testOnly: boolean,
-    urlSafe: boolean,
-  ) => string;
-}
-
-interface Cell {
-  toBoc: () => Promise<Uint8Array>;
-}
-
-interface CellBuilder {
-  storeUint: (value: number, bitLength: number) => CellBuilder;
-  storeAddress: (address: Address) => CellBuilder;
-  storeCoins: (amount: string) => CellBuilder;
-  storeBytes: (bytes: Uint8Array) => CellBuilder;
-  storeRef: (cell: Cell) => CellBuilder;
-  endCell: () => Cell;
 }
 
 /**
@@ -111,6 +45,16 @@ export class StarsPurchaseService {
 
   private readonly PRICE_PER_STAR_RUB = 1.244;
 
+  /**
+   * Fixed price for 50 stars on Fragment (in USD)
+   * We use 0.85 USDT with reserve for 50 stars
+   */
+  private readonly PRICE_50_STARS_USD = 0.75;
+
+  private readonly USDT_RESERVE_MULTIPLIER = 1.133; // 0.85 / 0.75 = 1.133
+
+  private startTime?: number;
+
   // Simple flag to track if a purchase is currently being processed
   // TODO: Replace with RabbitMQ or similar message queue for production
   private isProcessingPurchase = false;
@@ -118,8 +62,12 @@ export class StarsPurchaseService {
   constructor(
     private readonly apiClient: FragmentApiClientService,
     private readonly whitelistService: WhitelistService,
-    private readonly config: FragmentConfig,
+    private readonly tonConfig: TonConfig,
     private readonly notificationsService: NotificationsService,
+    private readonly stonfiSwapService: StonfiSwapService,
+    private readonly tonWalletProvider: TonWalletProvider,
+    private readonly tonTransactionProvider: TonTransactionProvider,
+    private readonly tonBalanceProvider: TonBalanceProvider,
     @InjectEntityManager()
     private readonly em: EntityManager,
   ) {}
@@ -136,7 +84,7 @@ export class StarsPurchaseService {
     userId: string,
     recipientUsername: string,
     amount: number,
-    hideSender: number = 0,
+    hideSender: number = 0, // eslint-disable-line @typescript-eslint/no-unused-vars
     isTestPurchase: boolean = false,
   ): Promise<PurchaseResult> {
     // Check if a purchase is currently being processed
@@ -155,6 +103,7 @@ export class StarsPurchaseService {
     this.isProcessingPurchase = true;
 
     const startTime = Date.now();
+    this.startTime = startTime;
     const purchaseRepo = this.em.getRepository(StarsPurchaseEntity);
 
     const purchaseRecord = purchaseRepo.create({
@@ -176,6 +125,22 @@ export class StarsPurchaseService {
       this.logger.log(
         `User ${userId} initiated purchase: ${amount} stars for @${recipientUsername.replace('@', '')}`,
       );
+
+      // 0. Check USDT balance before starting purchase (final check after payment)
+      // This protects against concurrent purchases that might deplete the balance
+      this.logger.debug('Checking USDT balance before purchase...');
+      const balanceCheck = await this.checkUsdtBalanceForPurchase(amount);
+      if (!balanceCheck.sufficient) {
+        const balanceFormatted = balanceCheck.balance
+          ? (Number(BigInt(balanceCheck.balance)) / 1e6).toFixed(2)
+          : '0';
+        const requiredFormatted = balanceCheck.required
+          ? (Number(BigInt(balanceCheck.required)) / 1e6).toFixed(2)
+          : 'unknown';
+        throw new Error(
+          `Insufficient funds. Required: ${requiredFormatted} USDT, Available: ${balanceFormatted} USDT. Please contact administrator.`,
+        );
+      }
 
       // 1. Initialize session
       this.logger.debug('Initializing Fragment session...');
@@ -244,78 +209,90 @@ export class StarsPurchaseService {
           }>
         | undefined;
 
-      if (successfulResult) {
-        buyRequest = successfulResult.value.request;
-        this.logger.log(`Buy request created: ${buyRequest.req_id}`);
-      } else {
+      if (!successfulResult) {
         const lastError = results[results.length - 1];
         if (lastError.status === 'rejected') {
           throw lastError.reason;
         }
+        throw new Error('Failed to create buy request after retries');
       }
+
+      buyRequest = successfulResult.value.request;
+      this.logger.log(`Buy request created: ${buyRequest.req_id}`);
 
       if (!buyRequest) {
         throw new Error('Failed to create buy request after retries');
       }
 
-      // 7. Initialize wallet and get transaction details
-      this.logger.debug(
-        'Initializing wallet and getting transaction details...',
-      );
-      const walletData = await this.initializeWallet();
+      if (!buyRequest.amount) {
+        throw new Error('Buy request amount is missing');
+      }
+
+      // 7. Initialize wallet and check balance / perform swap if needed
+      this.logger.debug('Initializing wallet and checking balance...');
+      const walletData = await this.tonWalletProvider.initializeWallet();
       if (!walletData) {
         throw new Error('Failed to initialize wallet');
       }
 
-      // 8. Get transaction details from Fragment
-      const transactionData = await this.apiClient.getBuyStarsLink(
-        buyRequest.req_id,
-        walletData.address,
-        walletData.stateInit,
-        walletData.publicKey,
-        hideSender,
-      );
+      // Calculate required TON amount from buy request
+      // buyRequest.amount is a string, but may contain a float (e.g., "0.4418")
+      // We need to normalize it to nano units (integer string)
+      const requiredTonAmountRaw = buyRequest.amount;
 
-      this.logger.debug('Transaction details received');
+      if (!requiredTonAmountRaw) {
+        throw new Error('Buy request amount is missing');
+      }
 
-      // 9. Sign transaction
-      this.logger.debug('Signing transaction...');
-      const signedBoc = await this.signTransaction(
-        transactionData.transaction,
-        walletData,
-      );
+      const requiredTonValue = parseFloat(requiredTonAmountRaw);
 
-      // 10. Send transaction to blockchain
-      this.logger.debug('Sending transaction to blockchain...');
-      const txHash = await this.sendTransactionToBlockchain(signedBoc);
-
-      // Validate txHash - it should be a valid hash, not an error message
-      const isValidTxHash =
-        txHash &&
-        typeof txHash === 'string' &&
-        txHash.length > 20 &&
-        !txHash.toLowerCase().includes('error') &&
-        !txHash.toLowerCase().includes('rate') &&
-        !txHash.toLowerCase().includes('limit') &&
-        !txHash.toLowerCase().includes('exceed');
-
-      if (isValidTxHash) {
-        this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
-      } else {
-        this.logger.warn(
-          `Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
+      if (Number.isNaN(requiredTonValue) || requiredTonValue <= 0) {
+        throw new Error(
+          `Invalid buy request amount: ${requiredTonAmountRaw} (parsed as ${requiredTonValue})`,
         );
       }
 
-      // Wait for transaction to be processed
-      await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
+      // If it's a float, convert to nano (multiply by 1e9)
+      // If it's already an integer string, use as is
+      const requiredTonAmount =
+        requiredTonValue % 1 !== 0
+          ? Math.floor(requiredTonValue * 1e9).toString()
+          : Math.floor(requiredTonValue).toString();
+
+      if (
+        !requiredTonAmount ||
+        requiredTonAmount === 'NaN' ||
+        requiredTonAmount === '0'
+      ) {
+        throw new Error(
+          `Failed to normalize TON amount. Raw: ${requiredTonAmountRaw}, Value: ${requiredTonValue}, Result: ${requiredTonAmount}`,
+        );
+      }
+
+      // 7. Check balance and perform swap if needed
+      const balanceInfo = await this.checkAndPrepareBalance(
+        walletData.address,
+        requiredTonAmount,
+        amount,
+      );
+
+      const { initialTonBalance, initialUsdtBalance, swapPerformed } =
+        balanceInfo;
+
+      // 8. Execute transaction
+      const { signedBoc, txHash, isValidTxHash } =
+        await this.executeTransaction(
+          buyRequest.req_id,
+          walletData,
+          hideSender,
+        );
 
       // 11. Confirm transaction with Fragment
       // Note: Even if txHash is invalid (rate limit), we still try to confirm
       // Fragment may have received the transaction despite the API error response
       if (!isValidTxHash) {
-        this.logger.warn(
-          `Transaction hash is invalid (${txHash || 'undefined'}), but proceeding with Fragment confirmation. This may indicate a rate limit issue.`,
+        this.logger.debug(
+          `Transaction hash is invalid or missing (${txHash || 'undefined'}), but proceeding with Fragment confirmation. Fragment may have received the transaction despite the API response.`,
         );
       }
 
@@ -332,19 +309,26 @@ export class StarsPurchaseService {
         throw new Error('Transaction confirmation failed');
       }
 
+      // Transaction is confirmed by Fragment, so it's successful regardless of txHash format
+      // If Fragment confirms, the transaction was processed successfully
+      const finalTxHash = isValidTxHash ? txHash : txHash || undefined;
+
+      // 9. Log final balances
+      await this.logFinalBalances(
+        walletData.address,
+        initialTonBalance,
+        initialUsdtBalance,
+        BigInt(requiredTonAmount),
+        swapPerformed,
+      );
+
       // Update purchase record in DB
       purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
       purchaseRecord.fragmentRequestId = buyRequest.req_id;
-      purchaseRecord.txHash = isValidTxHash ? txHash : undefined;
+      purchaseRecord.txHash = finalTxHash;
       await purchaseRepo.save(purchaseRecord);
 
-      if (!isValidTxHash) {
-        this.logger.error(
-          `Purchase marked as completed but transaction may not have been sent to blockchain. Fragment request ID: ${buyRequest.req_id}. Stars may not arrive. Check Fragment dashboard and user account.`,
-        );
-      }
-
-      const processingTime = Date.now() - startTime;
+      const processingTime = Date.now() - (this.startTime || Date.now());
       const priceRub = amount * this.PRICE_PER_STAR_RUB;
 
       this.logger.log(
@@ -365,15 +349,17 @@ export class StarsPurchaseService {
       return {
         success: true,
         requestId: buyRequest.req_id,
-        txHash: txHash || undefined,
+        txHash: finalTxHash,
       };
     } catch (error: unknown) {
       let errorMessage: string;
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === 'string') {
+      }
+      if (typeof error === 'string') {
         errorMessage = error;
-      } else {
+      }
+      if (!errorMessage) {
         errorMessage = JSON.stringify(error) || 'Unknown error';
       }
 
@@ -411,6 +397,49 @@ export class StarsPurchaseService {
   }
 
   /**
+   * Check if there's sufficient USDT balance for purchasing stars
+   * @param starsAmount Amount of stars to purchase
+   * @returns true if balance is sufficient, false otherwise
+   */
+  async checkUsdtBalanceForPurchase(
+    starsAmount: number,
+  ): Promise<{ sufficient: boolean; balance?: string; required?: string }> {
+    try {
+      const walletData = await this.tonWalletProvider.initializeWallet();
+      if (!walletData) {
+        return { sufficient: false };
+      }
+
+      const balances = await this.tonBalanceProvider.getWalletBalances(
+        walletData.address,
+      );
+      if (!balances) {
+        return { sufficient: false };
+      }
+
+      const usdtBalance = BigInt(balances.usdt || '0');
+      const usdtAmountForStars =
+        (starsAmount / 50) *
+        this.PRICE_50_STARS_USD *
+        this.USDT_RESERVE_MULTIPLIER;
+      const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6));
+
+      const sufficient = usdtBalance >= requiredUsdtNano;
+
+      return {
+        sufficient,
+        balance: usdtBalance.toString(),
+        required: requiredUsdtNano.toString(),
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to check USDT balance: ${errorMessage}`);
+      return { sufficient: false };
+    }
+  }
+
+  /**
    * Purchase 50 test stars for whitelisted user
    * This method handles the complete flow: whitelist check, purchase, and test claims increment
    * Admin can claim without restrictions
@@ -427,7 +456,9 @@ export class StarsPurchaseService {
     const isAdmin = userId === ADMIN_USER_ID;
 
     // 1. Check if user is whitelisted (admin bypasses this check)
-    if (!isAdmin) {
+    if (isAdmin) {
+      // Skip whitelist check for admin
+    } else {
       const isWhitelisted =
         await this.whitelistService.isUserWhitelisted(userId);
       if (!isWhitelisted) {
@@ -439,7 +470,9 @@ export class StarsPurchaseService {
     }
 
     // 2. Check if user can claim test stars (admin bypasses this check)
-    if (!isAdmin) {
+    if (isAdmin) {
+      // Skip test claims check for admin
+    } else {
       const canClaim = await this.whitelistService.canClaimTestStars(
         userId,
         MAX_TEST_CLAIMS,
@@ -461,259 +494,279 @@ export class StarsPurchaseService {
       true, // isTestPurchase
     );
 
-    // 4. If purchase was successful, increment test claims (admin still increments for tracking)
-    if (result.success && !isAdmin) {
-      await this.whitelistService.incrementTestClaims(userId);
+    // 4. If purchase was successful, increment test claims
+    // Note: Admin also increments for tracking purposes
+    if (!result.success) {
+      return result;
     }
 
+    await this.whitelistService.incrementTestClaims(userId);
     return result;
   }
 
   /**
-   * Initialize TON wallet from mnemonic
+   * Check balance and perform swap if needed
    */
-  private async initializeWallet(): Promise<{
-    address: string;
-    stateInit: string;
-    publicKey: string;
-    privateKey: Uint8Array;
-  } | null> {
-    try {
-      // Dynamic import to avoid issues with CommonJS modules
-      // tonweb and ton-crypto are CommonJS modules, require() is necessary
+  private async checkAndPrepareBalance(
+    walletAddress: string,
+    requiredTonAmount: string,
+    starsAmount: number,
+  ): Promise<{
+    initialTonBalance: bigint;
+    initialUsdtBalance: bigint;
+    totalRequiredTon: bigint;
+    swapPerformed: boolean;
+    swapTxHash?: string;
+  }> {
+    this.logger.debug('Getting initial wallet balances...');
+    const initialBalances =
+      await this.tonBalanceProvider.getWalletBalances(walletAddress);
+    if (!initialBalances) {
+      throw new Error('Failed to get initial wallet balances');
+    }
 
-      const mnemonicArray = this.config.mnemonic.trim().split(/\s+/);
-      if (mnemonicArray.length !== 24) {
-        throw new Error('Mnemonic must contain 24 words');
-      }
+    const initialTonBalance = BigInt(initialBalances.ton || '0');
+    const initialUsdtBalance = BigInt(initialBalances.usdt || '0');
 
-      // Get private key from mnemonic
-      const keyPair = await mnemonicToPrivateKey(mnemonicArray);
-      const privateKey = keyPair.secretKey;
+    const initialTonFormatted = (Number(initialTonBalance) / 1e9).toFixed(4);
+    const initialUsdtFormatted = (Number(initialUsdtBalance) / 1e6).toFixed(2);
 
-      // Type assertion to extended interface because tonweb types are incomplete
-      const TonWebTyped = TonWeb as unknown as TonWebExtended;
+    this.logger.log(
+      `Initial balances - TON: ${initialTonFormatted}, USDT: ${initialUsdtFormatted}`,
+    );
 
-      // Create HttpProvider first
-      const httpProvider = new TonWebTyped.HttpProvider(
-        this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
-        {
-          apiKey: this.config.toncenterApiKey,
-        },
+    const minTonForFees = BigInt(this.tonConfig.minTonForFees || '100000000');
+    const requiredTonBigInt = BigInt(requiredTonAmount);
+    const totalRequiredTon = requiredTonBigInt + minTonForFees;
+
+    const requiredTonFormatted = (Number(totalRequiredTon) / 1e9).toFixed(4);
+    this.logger.debug(
+      `Required TON: ${requiredTonFormatted} TON (${totalRequiredTon} nano) = ${(Number(requiredTonBigInt) / 1e9).toFixed(4)} TON + ${(Number(minTonForFees) / 1e9).toFixed(4)} TON (fees)`,
+    );
+
+    const hasSufficientTon = initialTonBalance >= totalRequiredTon;
+    const hasUsdt = initialUsdtBalance > BigInt(0);
+
+    this.logger.debug(
+      `TON sufficient: ${hasSufficientTon}, USDT available: ${hasUsdt}`,
+    );
+
+    let swapPerformed = false;
+    let swapTxHash: string | undefined;
+
+    if (hasUsdt) {
+      const swapResult = await this.performUsdtSwapIfNeeded(
+        starsAmount,
+        initialUsdtBalance,
       );
 
-      // Create TonWeb instance (needed to access wallet.all)
-      // TonWeb constructor takes HttpProvider as argument
-      const tonWebInstance = new (TonWeb as any)(httpProvider);
-
-      // Initialize wallet v3R2 - access through instance, not class
-      const WalletClass = tonWebInstance.wallet.all.v3R2;
-      const wallet = new WalletClass(httpProvider, {
-        publicKey: keyPair.publicKey,
-      });
-
-      const address = await wallet.getAddress();
-      const addressString = address.toString(true, true, true);
-
-      // Get state init
-      const stateInit = await wallet.createStateInit();
-      const stateInitCell = stateInit.stateInit;
-      const stateInitBoc = await stateInitCell.toBoc();
-      const stateInitBase64 = tonWebInstance.utils.bytesToBase64(stateInitBoc);
-
-      // Get public key as hex
-      const publicKeyHex = tonWebInstance.utils.bytesToHex(keyPair.publicKey);
-
-      return {
-        address: addressString,
-        stateInit: stateInitBase64,
-        publicKey: publicKeyHex,
-        privateKey,
-      };
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to initialize wallet: ${errorMessage}`);
-      return null;
+      if (swapResult) {
+        swapPerformed = true;
+        swapTxHash = swapResult.txHash;
+      }
     }
+
+    if (!hasUsdt && !hasSufficientTon) {
+      throw new Error(
+        `Insufficient balance. Required: ${requiredTonFormatted} TON, Available: ${initialTonFormatted} TON. No USDT available for swap. Please contact administrators.`,
+      );
+    }
+
+    if (!hasUsdt && hasSufficientTon) {
+      this.logger.log(
+        `No USDT available, but TON balance sufficient. Proceeding with purchase.`,
+      );
+    }
+
+    return {
+      initialTonBalance,
+      initialUsdtBalance,
+      totalRequiredTon,
+      swapPerformed,
+      swapTxHash,
+    };
   }
 
   /**
-   * Sign transaction using wallet
-   * Uses tonweb to create and sign transaction in format expected by Fragment API
-   * Based on the working script approach using wallet.createSigningMessage()
+   * Perform USDT to TON swap if sufficient balance available
    */
-  private async signTransaction(
-    transaction: {
-      validUntil: number;
-      from: string;
-      messages: Array<{
-        address: string;
-        amount: string;
-        payload?: string;
-      }>;
-    },
-    walletData: {
-      address: string;
-      stateInit: string;
-      publicKey: string;
-      privateKey: Uint8Array;
-    },
-  ): Promise<string> {
-    try {
-      // Type assertion to extended interface because tonweb types are incomplete
-      const TonWebTyped = TonWeb as unknown as TonWebExtended;
+  private async performUsdtSwapIfNeeded(
+    starsAmount: number,
+    initialUsdtBalance: bigint,
+  ): Promise<{ txHash: string } | null> {
+    const usdtAmountForStars =
+      (starsAmount / 50) *
+      this.PRICE_50_STARS_USD *
+      this.USDT_RESERVE_MULTIPLIER;
+    const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6));
+    const requiredUsdtFormatted = usdtAmountForStars.toFixed(2);
 
-      // Create HttpProvider and TonWeb instance
-      const httpProvider = new TonWebTyped.HttpProvider(
-        this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
-        {
-          apiKey: this.config.toncenterApiKey,
-        },
+    this.logger.log(
+      `USDT available. Required: ${requiredUsdtFormatted} USDT for ${starsAmount} stars`,
+    );
+
+    const hasSufficientUsdt = initialUsdtBalance >= requiredUsdtNano;
+
+    if (!hasSufficientUsdt) {
+      const initialUsdtFormatted = (Number(initialUsdtBalance) / 1e6).toFixed(
+        2,
       );
-      const tonWebInstance = new (TonWeb as any)(httpProvider);
-
-      // Recreate wallet to access createSigningMessage
-      const mnemonicArray = this.config.mnemonic.trim().split(/\s+/);
-      const keyPair = await mnemonicToPrivateKey(mnemonicArray);
-      const WalletClass = tonWebInstance.wallet.all.v3R2;
-      const wallet = new WalletClass(httpProvider, {
-        publicKey: keyPair.publicKey,
-      });
-
-      // Get seqno (transaction sequence number)
-      const seqno = (await wallet.methods.seqno().call()) || 0;
-
-      // Convert private key to Uint8Array if needed
-      const secretKeyUint8 =
-        walletData.privateKey instanceof Buffer
-          ? new Uint8Array(walletData.privateKey)
-          : walletData.privateKey;
-
-      // Create signing message using wallet method
-      const signingMessage = wallet.createSigningMessage(seqno);
-      const SEND_MODE = 3; // Standard send mode
-      signingMessage.bits.writeUint8(SEND_MODE);
-
-      // Process each message from transaction
-      for (const msg of transaction.messages) {
-        let messagePayload = null;
-        if (msg.payload) {
-          const payloadBytes = tonWebInstance.utils.base64ToBytes(msg.payload);
-          messagePayload = tonWebInstance.boc.Cell.oneFromBoc(payloadBytes);
-        }
-
-        // Create outgoing message using Contract helper
-        const outMsg = tonWebInstance.Contract.createOutMsg(
-          msg.address,
-          msg.amount,
-          messagePayload,
-          null,
-        );
-        signingMessage.refs.push(outMsg);
-      }
-
-      // Get BOC and hash for signing
-      const boc = await signingMessage.toBoc(false);
-      const hash = await tonWebInstance.boc.Cell.oneFromBoc(boc).hash();
-
-      // Sign the hash using nacl
-      const signature = nacl.sign.detached(hash, secretKeyUint8);
-
-      // Create body cell with signature
-      const body = new tonWebInstance.boc.Cell();
-      body.bits.writeBytes(signature);
-      body.writeCell(tonWebInstance.boc.Cell.oneFromBoc(boc));
-
-      // Create state init if this is the first transaction (seqno === 0)
-      let stateInit = null;
-      if (seqno === 0) {
-        const deploy = await wallet.createStateInit();
-        stateInit = deploy.stateInit;
-      }
-
-      // Create external message header and common message info
-      const selfAddress = await wallet.getAddress();
-      const header =
-        tonWebInstance.Contract.createExternalMessageHeader(selfAddress);
-      const externalMessage = tonWebInstance.Contract.createCommonMsgInfo(
-        header,
-        stateInit,
-        body,
+      throw new Error(
+        `Insufficient USDT balance. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
       );
-
-      // Get final signed BOC
-      const signedBoc = await externalMessage.toBoc(false);
-      return tonWebInstance.utils.bytesToBase64(signedBoc);
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to sign transaction: ${errorMessage}`);
-      throw error;
     }
+
+    const initialUsdtFormatted = (Number(initialUsdtBalance) / 1e6).toFixed(2);
+    this.logger.log(
+      `USDT balance sufficient for swap. Required: ${requiredUsdtFormatted} USDT, Available: ${initialUsdtFormatted} USDT`,
+    );
+
+    this.logger.log(
+      `Processing your payment. Please wait while we complete the transaction...`,
+    );
+    await this.sleep(1000);
+
+    this.logger.debug(
+      `Getting swap quote for ${requiredUsdtFormatted} USDT...`,
+    );
+    const swapQuote = await this.stonfiSwapService.getSwapQuoteFromUsdt(
+      requiredUsdtNano.toString(),
+    );
+
+    if (!swapQuote) {
+      throw new Error('Failed to get swap quote');
+    }
+
+    const minTonAmount = swapQuote.minToAmount;
+    const minTonFormatted = (Number(BigInt(minTonAmount)) / 1e9).toFixed(4);
+
+    this.logger.log(
+      `Executing USDT to TON swap: ${requiredUsdtFormatted} USDT -> min ${minTonFormatted} TON...`,
+    );
+
+    const swapResult = await this.stonfiSwapService.swapUsdtToTon(
+      requiredUsdtNano.toString(),
+      minTonAmount,
+    );
+
+    if (!swapResult.success) {
+      throw new Error(`Swap failed: ${swapResult.error || 'Unknown error'}`);
+    }
+
+    this.logger.log(
+      `Swap completed successfully. TX Hash: ${swapResult.txHash}`,
+    );
+
+    await this.sleep(2000);
+
+    return { txHash: swapResult.txHash! };
   }
 
   /**
-   * Send signed transaction to blockchain directly
-   * Uses tonweb provider to send BOC to TON network
-   * TODO: Replace with RabbitMQ worker for production
+   * Execute transaction: get details, sign and send to blockchain
    */
-  private async sendTransactionToBlockchain(
-    signedBoc: string,
-  ): Promise<string | undefined> {
-    try {
-      const TonWebTyped = TonWeb as unknown as TonWebExtended;
+  private async executeTransaction(
+    requestId: string,
+    walletData: WalletData,
+    hideSender: number,
+  ): Promise<{
+    signedBoc: string;
+    txHash?: string;
+    isValidTxHash: boolean;
+  }> {
+    this.logger.debug('Getting transaction details from Fragment...');
+    const transactionData = await this.apiClient.getBuyStarsLink(
+      requestId,
+      walletData.address,
+      walletData.stateInit,
+      walletData.publicKey,
+      hideSender,
+    );
 
-      // Create HttpProvider
-      const httpProvider = new TonWebTyped.HttpProvider(
-        this.config.toncenterRpcUrl || 'https://toncenter.com/api/v2/jsonRPC',
-        {
-          apiKey: this.config.toncenterApiKey,
-        },
+    this.logger.debug('Transaction details received');
+
+    this.logger.debug('Signing transaction...');
+    const signedBoc = await this.tonTransactionProvider.signTransaction(
+      transactionData.transaction as Transaction,
+      walletData,
+    );
+
+    this.logger.debug('Sending transaction to blockchain...');
+    const txHash =
+      await this.tonTransactionProvider.sendTransactionToBlockchain(signedBoc);
+
+    // Validate txHash: must be a non-empty string without error keywords
+    // Note: We don't check length strictly as different APIs may return different formats
+    const isValidTxHash =
+      txHash &&
+      typeof txHash === 'string' &&
+      txHash.trim().length > 0 &&
+      !txHash.toLowerCase().includes('error') &&
+      !txHash.toLowerCase().includes('rate') &&
+      !txHash.toLowerCase().includes('limit') &&
+      !txHash.toLowerCase().includes('exceed');
+
+    if (!isValidTxHash) {
+      this.logger.warn(
+        `Transaction may not have been sent to blockchain. Response: ${txHash || 'undefined'}`,
       );
-
-      // Send BOC to blockchain
-      const result = await httpProvider.sendBoc(signedBoc);
-
-      // Extract transaction hash from result
-      let txHash: string | undefined;
-
-      if (typeof result === 'string') {
-        txHash = result;
-      } else if (typeof result === 'object' && result !== null) {
-        txHash =
-          (result as any).hash ||
-          (result as any).tx_hash ||
-          (result as any).transaction_id ||
-          (result as any).result;
-      }
-
-      // Validate that result is not an error message
-      if (
-        txHash &&
-        typeof txHash === 'string' &&
-        (txHash.toLowerCase().includes('error') ||
-          txHash.toLowerCase().includes('rate') ||
-          txHash.toLowerCase().includes('limit') ||
-          txHash.toLowerCase().includes('exceed') ||
-          txHash.toLowerCase().includes('fail'))
-      ) {
-        this.logger.error(
-          `Blockchain API returned error message instead of txHash: ${txHash}`,
-        );
-        return undefined;
-      }
-
-      return txHash;
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Failed to send transaction to blockchain: ${errorMessage}`,
-      );
-      // Don't throw - transaction might still be processed
-      return undefined;
+      await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
+      return { signedBoc, txHash, isValidTxHash };
     }
+
+    this.logger.log(`Transaction sent to blockchain. TX Hash: ${txHash}`);
+    await this.sleep(this.TRANSACTION_WAIT_TIME_MS);
+
+    return { signedBoc, txHash, isValidTxHash };
+  }
+
+  /**
+   * Log final balances and changes
+   */
+  private async logFinalBalances(
+    walletAddress: string,
+    initialTonBalance: bigint,
+    initialUsdtBalance: bigint,
+    requiredTonBigInt: bigint,
+    swapPerformed: boolean,
+  ): Promise<void> {
+    this.logger.debug('Getting final wallet balances...');
+    const finalBalances =
+      await this.tonBalanceProvider.getWalletBalances(walletAddress);
+
+    if (!finalBalances) {
+      return;
+    }
+
+    const finalTonBalance = BigInt(finalBalances.ton || '0');
+    const finalUsdtBalance = BigInt(finalBalances.usdt || '0');
+
+    const tonChange = finalTonBalance - initialTonBalance;
+    const usdtSpent = initialUsdtBalance - finalUsdtBalance;
+
+    const finalTonFormatted = (Number(finalTonBalance) / 1e9).toFixed(4);
+    const finalUsdtFormatted = (Number(finalUsdtBalance) / 1e6).toFixed(2);
+    const tonChangeFormatted = (Number(tonChange) / 1e9).toFixed(4);
+    const usdtSpentFormatted = (Number(usdtSpent) / 1e6).toFixed(2);
+
+    this.logger.log(
+      `Final balances - TON: ${finalTonFormatted}, USDT: ${finalUsdtFormatted}`,
+    );
+    this.logger.log(
+      `Balance changes - TON change: ${tonChangeFormatted}, USDT spent: ${usdtSpentFormatted}`,
+    );
+
+    if (!swapPerformed) {
+      this.logger.debug(
+        'No swap was performed. Purchase was made directly with TON.',
+      );
+      return;
+    }
+
+    const tonReceivedFromSwap = tonChange + requiredTonBigInt;
+    this.logger.log(
+      `Swap was performed. USDT spent: ${usdtSpentFormatted}, TON received from swap: ~${(Number(tonReceivedFromSwap) / 1e9).toFixed(4)}, TON spent on purchase: ${(Number(requiredTonBigInt) / 1e9).toFixed(4)}`,
+    );
   }
 
   /**

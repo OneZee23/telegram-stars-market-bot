@@ -166,6 +166,11 @@ export class NotificationsService {
   }
 
   private async sendMessage(text: string): Promise<void> {
+    if (this.config.disableAlerts) {
+      this.logger.debug('Alerts disabled, skipping notification');
+      return;
+    }
+
     if (!this.config.channelId) {
       this.logger.warn('TELEGRAM_MONITORING_CHANNEL_ID not configured');
       return;

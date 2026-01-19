@@ -44,6 +44,9 @@ describe('Stars Purchase E2E', () => {
   const TEST_RECIPIENT_USERNAME_2 = 'test_user_2';
 
   beforeAll(async () => {
+    // Disable alerts for tests
+    process.env.DISABLE_ALERTS = 'true';
+
     // Get test values from environment or use defaults
     const testCookiesRaw =
       process.env.FRAGMENT_COOKIES ||
@@ -88,6 +91,16 @@ describe('Stars Purchase E2E', () => {
           'test test test test test test test test test test test test test test test test test test test test test test test test test test',
         toncenterRpcUrl: process.env.TONCENTER_RPC_URL,
         toncenterApiKey: process.env.TONCENTER_RPC_API_KEY,
+        usdtJettonAddress:
+          process.env.USDT_JETTON_ADDRESS ||
+          'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs',
+        swapSlippageTolerance: process.env.SWAP_SLIPPAGE_TOLERANCE
+          ? parseInt(process.env.SWAP_SLIPPAGE_TOLERANCE, 10)
+          : 1,
+        swapReservePercent: process.env.SWAP_RESERVE_PERCENT
+          ? parseInt(process.env.SWAP_RESERVE_PERCENT, 10)
+          : 5,
+        minTonForFees: process.env.MIN_TON_FOR_FEES || '100000000',
       })
       .compile();
 
@@ -153,7 +166,7 @@ describe('Stars Purchase E2E', () => {
     await userRepo.save(testUser);
   });
 
-  it.skip('should purchase 50 stars for whitelisted user', async () => {
+  it('should purchase 50 stars for whitelisted user', async () => {
     // Verify initial test claims is 0
     const userRepo = entityManager.getRepository(UserEntity);
     const userBefore = await userRepo.findOneBy({ userId: TEST_USER_ID });

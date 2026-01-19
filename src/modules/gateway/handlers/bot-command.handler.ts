@@ -1,6 +1,7 @@
 import { UserService } from '@modules/user/user.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
+import { CallbackData } from '../constants/callback-data.constants';
 import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
 import { ContextExtractor } from '../utils/context-extractor.util';
@@ -29,8 +30,13 @@ export class BotCommandHandler {
     const t = getTranslations(userContext.language);
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.help, callback_data: 'help' }],
-      [{ text: t.mainMenu.buyStars, callback_data: 'buy_stars' }],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
+      [
+        {
+          text: t.mainMenu.buyStars,
+          callback_data: CallbackData.BUY_STARS,
+        },
+      ],
     ]);
 
     await this.messageManagementService.sendMessage(
