@@ -1,18 +1,17 @@
+import { ConfigFragment } from '@common/config/config-fragment';
+import { UseEnv } from '@common/config/use-env.decorator';
 import { Injectable } from '@nestjs/common';
-import { IsNotEmpty, IsString, validateSync } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 @Injectable()
-export class NotificationsConfig {
+export class NotificationsConfig extends ConfigFragment {
   @IsString()
   @IsNotEmpty()
-  public readonly channelId = process.env.TELEGRAM_MONITORING_CHANNEL_ID;
+  @UseEnv('TELEGRAM_MONITORING_CHANNEL_ID')
+  public readonly channelId: string;
 
-  constructor() {
-    this.validateSelf();
-  }
-
-  private validateSelf(): void {
-    const errors = validateSync(this);
-    if (errors.length > 0) throw new Error(JSON.stringify(errors));
-  }
+  @IsBoolean()
+  @IsOptional()
+  @UseEnv('DISABLE_ALERTS', (value?: string) => value === 'true')
+  public readonly disableAlerts?: boolean;
 }

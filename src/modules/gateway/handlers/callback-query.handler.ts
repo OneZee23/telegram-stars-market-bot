@@ -3,9 +3,24 @@ import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
+import {
+  getTestClaimAmounts,
+  isAmountAvailable,
+  isTestClaimAmount,
+} from '../config/star-amounts.config';
+import {
+  buildAmountCallback,
+  buildPaymentCallback,
+  CallbackData,
+} from '../constants/callback-data.constants';
 import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
 import { UserState, UserStateService } from '../services/user-state.service';
+import {
+  isAmountCallback,
+  isPaymentConfirmationCallback,
+  parseAmountFromCallback,
+} from '../utils/callback-data.util';
 import { ContextExtractor } from '../utils/context-extractor.util';
 import { KeyboardBuilder } from '../utils/keyboard-builder.util';
 
@@ -38,17 +53,45 @@ export class CallbackQueryHandler {
       await ctx.answerCbQuery();
     }
 
+    // Check if callback is for amount selection (amount_XXX or amount_XXX_test)
+    const amount = parseAmountFromCallback(callbackData);
+    if (amount !== null && isAmountCallback(callbackData)) {
+      await this.handleAmountSelected(
+        ctx,
+        userContext.userId,
+        t,
+        userContext,
+        amount,
+      );
+      return;
+    }
+
+    // Check if callback is for payment confirmation (confirm_payment_XXX)
+    if (isPaymentConfirmationCallback(callbackData)) {
+      const paymentAmount = parseAmountFromCallback(callbackData);
+      if (paymentAmount !== null) {
+        await this.handleConfirmPayment(
+          ctx,
+          userContext.userId,
+          t,
+          userContext,
+          paymentAmount,
+        );
+        return;
+      }
+    }
+
     switch (callbackData) {
-      case 'help':
+      case CallbackData.HELP:
         await this.handleHelp(ctx, userContext.userId, t);
         break;
-      case 'buy_stars':
+      case CallbackData.BUY_STARS:
         await this.handleBuyStars(ctx, userContext.userId, t);
         break;
-      case 'buy_for_myself':
+      case CallbackData.BUY_FOR_MYSELF:
         await this.handleBuyForMyself(ctx, userContext.userId, t, userContext);
         break;
-      case 'buy_for_other':
+      case CallbackData.BUY_FOR_OTHER:
         if (ctx.callbackQuery && 'answerCallbackQuery' in ctx) {
           await ctx.answerCbQuery(
             t.buyStars.forOtherLocked.replace('🔒 ', ''),
@@ -58,25 +101,10 @@ export class CallbackQueryHandler {
           );
         }
         break;
-      case 'amount_50_test':
-        await this.handleTestPurchase(ctx, userContext.userId, t, userContext);
-        break;
-      case 'amount_500':
-      case 'amount_1000':
-      case 'amount_2000':
-      case 'amount_3000':
-      case 'amount_5000':
-        await this.handleAmountSelected(
-          ctx,
-          userContext.userId,
-          t,
-          callbackData,
-        );
-        break;
-      case 'amount_custom':
+      case CallbackData.AMOUNT_CUSTOM:
         await this.handleCustomAmount(ctx, userContext.userId, t);
         break;
-      case 'back_to_main':
+      case CallbackData.BACK_TO_MAIN:
         await this.handleBackToMain(ctx, userContext.userId, t);
         break;
       default:
@@ -93,7 +121,7 @@ export class CallbackQueryHandler {
     const text = `${t.help.title}\n\n${t.help.description}\n\n${channelLink}`;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.back, callback_data: 'back_to_main' }],
+      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
     ]);
 
     await this.messageManagementService.editMessage(
@@ -112,9 +140,19 @@ export class CallbackQueryHandler {
     const text = t.buyStars.selectRecipient;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.buyStars.forMyself, callback_data: 'buy_for_myself' }],
-      [{ text: t.buyStars.forOtherLocked, callback_data: 'buy_for_other' }],
-      [{ text: t.mainMenu.back, callback_data: 'back_to_main' }],
+      [
+        {
+          text: t.buyStars.forMyself,
+          callback_data: CallbackData.BUY_FOR_MYSELF,
+        },
+      ],
+      [
+        {
+          text: t.buyStars.forOtherLocked,
+          callback_data: CallbackData.BUY_FOR_OTHER,
+        },
+      ],
+      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
     ]);
 
     await this.messageManagementService.editMessage(
@@ -155,12 +193,20 @@ export class CallbackQueryHandler {
     const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
 
     if (isWhitelisted && canClaim) {
-      // For whitelisted users: show only 50 stars button
+      // For whitelisted users: show available test claim amounts
+      const testAmounts = getTestClaimAmounts();
       const text = t.buyStars.testModeSelectAmount;
 
+      const buttons = testAmounts.map((config) => [
+        {
+          text: `${config.amount} ⭐`,
+          callback_data: buildAmountCallback(config.amount, true),
+        },
+      ]);
+
       const keyboard = KeyboardBuilder.createInlineKeyboard([
-        [{ text: '50 ⭐', callback_data: 'amount_50_test' }],
-        [{ text: t.mainMenu.back, callback_data: 'buy_stars' }],
+        ...buttons,
+        [{ text: t.mainMenu.back, callback_data: CallbackData.BUY_STARS }],
       ]);
 
       await this.messageManagementService.editMessage(
@@ -185,12 +231,20 @@ export class CallbackQueryHandler {
     }
   }
 
-  private async handleTestPurchase(
+  private async handleAmountSelected(
     ctx: Context,
     userId: string,
     t: ReturnType<typeof getTranslations>,
     userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+    amount: number,
   ): Promise<void> {
+    // Check if amount is available
+    if (!isAmountAvailable(amount)) {
+      const errorText = t.buyStars.only50StarsAvailable;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
     // Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
@@ -221,50 +275,71 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show processing message
+    // For test claim amounts, check if user can claim
+    if (isTestClaimAmount(amount)) {
+      const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
+      if (!canClaim) {
+        const message = t.buyStars.alreadyClaimed
+          .replace('{channel}', 'https://t.me/onezee_co')
+          .replace('{post}', 'https://t.me/onezee_co/49');
+        await this.messageManagementService.editMessage(ctx, userId, message);
+        return;
+      }
+    }
+
+    // Check USDT balance
+    const balanceCheck =
+      await this.starsPurchaseService.checkUsdtBalanceForPurchase(amount);
+
+    if (!balanceCheck.sufficient) {
+      const errorText = t.buyStars.insufficientBalance;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Show payment button (mock YooKassa payment)
+    const paymentText = t.buyStars.paymentRequired.replace(
+      '{amount}',
+      amount.toString(),
+    );
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [
+        {
+          text: t.buyStars.payButton,
+          callback_data: buildPaymentCallback(amount),
+        },
+      ],
+      [
+        {
+          text: t.mainMenu.back,
+          callback_data: CallbackData.BUY_FOR_MYSELF,
+        },
+      ],
+    ]);
+
     await this.messageManagementService.editMessage(
       ctx,
       userId,
-      t.buyStars.processing,
+      paymentText,
+      keyboard,
     );
-
-    // Purchase 50 test stars
-    this.logger.log(
-      `User ${userId} (@${username}) initiated test purchase of 50 stars`,
-    );
-    const result = await this.starsPurchaseService.purchaseTestStars(
-      userId,
-      username,
-    );
-
-    if (result.success) {
-      // Success message with instructions
-      const successText = t.buyStars.testPurchaseSuccess
-        .replace('{channel}', 'https://t.me/onezee_co')
-        .replace('{post}', 'https://t.me/onezee_co/49');
-
-      await this.messageManagementService.editMessage(ctx, userId, successText);
-    } else {
-      // Error message
-      let errorText: string;
-      if (result.error === 'QUEUE_BUSY') {
-        errorText = t.buyStars.queueBusy;
-      } else {
-        errorText = t.buyStars.purchaseError.replace(
-          '{error}',
-          result.error || 'Unknown error',
-        );
-      }
-      await this.messageManagementService.editMessage(ctx, userId, errorText);
-    }
   }
 
-  private async handleAmountSelected(
+  private async handleConfirmPayment(
     ctx: Context,
     userId: string,
     t: ReturnType<typeof getTranslations>,
-    callbackData: string,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+    amount: number,
   ): Promise<void> {
+    // Check if amount is available
+    if (!isAmountAvailable(amount)) {
+      const errorText = t.buyStars.only50StarsAvailable;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Check if user is whitelisted
     const isWhitelisted = await this.whitelistService.isUserWhitelisted(userId);
     if (!isWhitelisted) {
       const message = t.buyStars.notInWhitelist
@@ -275,15 +350,72 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Whitelist users can only purchase 50 stars
-    this.logger.warn(
-      `Whitelist user ${userId} attempted to select amount: ${callbackData}`,
-    );
+    // For test claim amounts, check if user can claim
+    if (isTestClaimAmount(amount)) {
+      const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
+      if (!canClaim) {
+        const message = t.buyStars.alreadyClaimed
+          .replace('{channel}', 'https://t.me/onezee_co')
+          .replace('{post}', 'https://t.me/onezee_co/49');
+        await this.messageManagementService.editMessage(ctx, userId, message);
+        return;
+      }
+    }
+
+    let username = ctx.from?.username;
+
+    if (!username && ctx.chat) {
+      try {
+        const chat = await ctx.telegram.getChat(ctx.chat.id);
+        if ('username' in chat && chat.username) {
+          username = chat.username;
+        }
+      } catch {
+        username = userContext?.username;
+      }
+    }
+
+    if (!username) {
+      const errorText = t.errors.usernameRequired;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Show processing message with timeout info
+    const processingText = t.buyStars.purchaseProcessing;
     await this.messageManagementService.editMessage(
       ctx,
       userId,
-      t.buyStars.only50StarsAvailable,
+      processingText,
     );
+
+    // Purchase stars
+    this.logger.log(
+      `User ${userId} (@${username}) confirmed payment for ${amount} stars`,
+    );
+
+    const result = isTestClaimAmount(amount)
+      ? await this.starsPurchaseService.purchaseTestStars(userId, username)
+      : await this.starsPurchaseService.purchaseStars(userId, username, amount);
+
+    if (!result.success) {
+      const errorText =
+        result.error === 'QUEUE_BUSY'
+          ? t.buyStars.queueBusy
+          : t.buyStars.purchaseError.replace(
+              '{error}',
+              result.error || 'Unknown error',
+            );
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Success message with instructions
+    const successText = t.buyStars.testPurchaseSuccess
+      .replace('{channel}', 'https://t.me/onezee_co')
+      .replace('{post}', 'https://t.me/onezee_co/49');
+
+    await this.messageManagementService.editMessage(ctx, userId, successText);
   }
 
   private async handleCustomAmount(
@@ -313,8 +445,13 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
   ): Promise<void> {
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.help, callback_data: 'help' }],
-      [{ text: t.mainMenu.buyStars, callback_data: 'buy_stars' }],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
+      [
+        {
+          text: t.mainMenu.buyStars,
+          callback_data: CallbackData.BUY_STARS,
+        },
+      ],
     ]);
 
     await this.messageManagementService.editMessage(

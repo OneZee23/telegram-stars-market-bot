@@ -1,0 +1,37 @@
+/**
+ * Callback data constants for Telegram bot
+ * Used for inline keyboard buttons
+ */
+export enum CallbackData {
+  // Main menu
+  HELP = 'help',
+  BUY_STARS = 'buy_stars',
+  BACK_TO_MAIN = 'back_to_main',
+
+  // Purchase flow
+  BUY_FOR_MYSELF = 'buy_for_myself',
+  BUY_FOR_OTHER = 'buy_for_other',
+  AMOUNT_CUSTOM = 'amount_custom',
+}
+
+/**
+ * Build callback data for amount selection
+ * @param amount Amount of stars
+ * @param isTest Whether this is a test claim
+ * @returns Callback data string
+ */
+export function buildAmountCallback(
+  amount: number,
+  isTest: boolean = false,
+): string {
+  return isTest ? `amount_${amount}_test` : `amount_${amount}`;
+}
+
+/**
+ * Build callback data for payment confirmation
+ * @param amount Amount of stars
+ * @returns Callback data string
+ */
+export function buildPaymentCallback(amount: number): string {
+  return `confirm_payment_${amount}`;
+}
