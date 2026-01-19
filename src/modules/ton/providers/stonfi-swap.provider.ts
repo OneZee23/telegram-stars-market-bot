@@ -10,7 +10,7 @@ import {
   SettlementMethod,
 } from '@ston-fi/omniston-sdk';
 import { Address, TonClient } from '@ton/ton';
-import { FragmentConfig } from '../fragment.config';
+import { TonConfig } from '../ton.config';
 
 export interface SwapResult {
   success: boolean;
@@ -38,7 +38,7 @@ export class StonfiSwapService {
     'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
 
   constructor(
-    private readonly config: FragmentConfig,
+    private readonly config: TonConfig,
     private readonly tonWalletProvider: TonWalletProvider,
     private readonly tonBalanceProvider: TonBalanceProvider,
   ) {
