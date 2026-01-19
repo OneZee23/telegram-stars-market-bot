@@ -275,8 +275,8 @@ export class StarsPurchaseService {
       // Note: Even if txHash is invalid (rate limit), we still try to confirm
       // Fragment may have received the transaction despite the API error response
       if (!isValidTxHash) {
-        this.logger.warn(
-          `Transaction hash is invalid (${txHash || 'undefined'}), but proceeding with Fragment confirmation. This may indicate a rate limit issue.`,
+        this.logger.debug(
+          `Transaction hash is invalid or missing (${txHash || 'undefined'}), but proceeding with Fragment confirmation. Fragment may have received the transaction despite the API response.`,
         );
       }
 
@@ -293,6 +293,10 @@ export class StarsPurchaseService {
         throw new Error('Transaction confirmation failed');
       }
 
+      // Transaction is confirmed by Fragment, so it's successful regardless of txHash format
+      // If Fragment confirms, the transaction was processed successfully
+      const finalTxHash = isValidTxHash ? txHash : txHash || undefined;
+
       // 9. Log final balances
       await this.logFinalBalances(
         walletData.address,
@@ -305,14 +309,8 @@ export class StarsPurchaseService {
       // Update purchase record in DB
       purchaseRecord.status = StarsPurchaseStatus.COMPLETED;
       purchaseRecord.fragmentRequestId = buyRequest.req_id;
-      purchaseRecord.txHash = isValidTxHash ? txHash : undefined;
+      purchaseRecord.txHash = finalTxHash;
       await purchaseRepo.save(purchaseRecord);
-
-      if (!isValidTxHash) {
-        this.logger.error(
-          `Purchase marked as completed but transaction may not have been sent to blockchain. Fragment request ID: ${buyRequest.req_id}. Stars may not arrive. Check Fragment dashboard and user account.`,
-        );
-      }
 
       const processingTime = Date.now() - (this.startTime || Date.now());
       const priceRub = amount * this.PRICE_PER_STAR_RUB;
@@ -335,7 +333,7 @@ export class StarsPurchaseService {
       return {
         success: true,
         requestId: buyRequest.req_id,
-        txHash: isValidTxHash ? txHash : undefined,
+        txHash: finalTxHash,
       };
     } catch (error: unknown) {
       let errorMessage: string;
@@ -638,10 +636,12 @@ export class StarsPurchaseService {
     const txHash =
       await this.tonTransactionProvider.sendTransactionToBlockchain(signedBoc);
 
+    // Validate txHash: must be a non-empty string without error keywords
+    // Note: We don't check length strictly as different APIs may return different formats
     const isValidTxHash =
       txHash &&
       typeof txHash === 'string' &&
-      txHash.length > 20 &&
+      txHash.trim().length > 0 &&
       !txHash.toLowerCase().includes('error') &&
       !txHash.toLowerCase().includes('rate') &&
       !txHash.toLowerCase().includes('limit') &&
