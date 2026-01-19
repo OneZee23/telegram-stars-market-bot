@@ -381,6 +381,49 @@ export class StarsPurchaseService {
   }
 
   /**
+   * Check if there's sufficient USDT balance for purchasing stars
+   * @param starsAmount Amount of stars to purchase
+   * @returns true if balance is sufficient, false otherwise
+   */
+  async checkUsdtBalanceForPurchase(
+    starsAmount: number,
+  ): Promise<{ sufficient: boolean; balance?: string; required?: string }> {
+    try {
+      const walletData = await this.tonWalletProvider.initializeWallet();
+      if (!walletData) {
+        return { sufficient: false };
+      }
+
+      const balances = await this.tonBalanceProvider.getWalletBalances(
+        walletData.address,
+      );
+      if (!balances) {
+        return { sufficient: false };
+      }
+
+      const usdtBalance = BigInt(balances.usdt || '0');
+      const usdtAmountForStars =
+        (starsAmount / 50) *
+        this.PRICE_50_STARS_USD *
+        this.USDT_RESERVE_MULTIPLIER;
+      const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6));
+
+      const sufficient = usdtBalance >= requiredUsdtNano;
+
+      return {
+        sufficient,
+        balance: usdtBalance.toString(),
+        required: requiredUsdtNano.toString(),
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to check USDT balance: ${errorMessage}`);
+      return { sufficient: false };
+    }
+  }
+
+  /**
    * Purchase 50 test stars for whitelisted user
    * This method handles the complete flow: whitelist check, purchase, and test claims increment
    * Admin can claim without restrictions
