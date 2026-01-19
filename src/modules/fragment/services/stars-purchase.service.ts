@@ -126,6 +126,22 @@ export class StarsPurchaseService {
         `User ${userId} initiated purchase: ${amount} stars for @${recipientUsername.replace('@', '')}`,
       );
 
+      // 0. Check USDT balance before starting purchase (final check after payment)
+      // This protects against concurrent purchases that might deplete the balance
+      this.logger.debug('Checking USDT balance before purchase...');
+      const balanceCheck = await this.checkUsdtBalanceForPurchase(amount);
+      if (!balanceCheck.sufficient) {
+        const balanceFormatted = balanceCheck.balance
+          ? (Number(BigInt(balanceCheck.balance)) / 1e6).toFixed(2)
+          : '0';
+        const requiredFormatted = balanceCheck.required
+          ? (Number(BigInt(balanceCheck.required)) / 1e6).toFixed(2)
+          : 'unknown';
+        throw new Error(
+          `Insufficient funds. Required: ${requiredFormatted} USDT, Available: ${balanceFormatted} USDT. Please contact administrator.`,
+        );
+      }
+
       // 1. Initialize session
       this.logger.debug('Initializing Fragment session...');
       await this.apiClient.initializeSession();
