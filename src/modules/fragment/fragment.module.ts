@@ -1,3 +1,4 @@
+import { PricingConfig } from '@modules/gateway/config/pricing.config';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { TonModule } from '@modules/ton/ton.module';
 import { UserModule } from '@modules/user/user.module';
@@ -11,6 +12,7 @@ import { StarsPurchaseService } from './services/stars-purchase.service';
   imports: [UserModule, NotificationsModule, TonModule],
   providers: [
     FragmentConfig,
+    PricingConfig,
     ProxyManagerService,
     FragmentApiClientService,
     StarsPurchaseService,

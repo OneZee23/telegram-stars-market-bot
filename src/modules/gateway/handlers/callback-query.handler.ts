@@ -3,7 +3,9 @@ import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
+import { PricingConfig } from '../config/pricing.config';
 import {
+  getAmountPricing,
   getTestClaimAmounts,
   isAmountAvailable,
   isTestClaimAmount,
@@ -34,6 +36,7 @@ export class CallbackQueryHandler {
     private readonly whitelistService: WhitelistService,
     private readonly starsPurchaseService: StarsPurchaseService,
     private readonly userService: UserService,
+    private readonly pricingConfig: PricingConfig,
   ) {}
 
   async handleCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
@@ -194,15 +197,19 @@ export class CallbackQueryHandler {
 
     if (isWhitelisted && canClaim) {
       // For whitelisted users: show available test claim amounts
-      const testAmounts = getTestClaimAmounts();
+      const testAmounts = getTestClaimAmounts(this.pricingConfig);
       const text = t.buyStars.testModeSelectAmount;
 
-      const buttons = testAmounts.map((config) => [
-        {
-          text: `${config.amount} ⭐`,
-          callback_data: buildAmountCallback(config.amount, true),
-        },
-      ]);
+      const buttons = testAmounts.map((config) => {
+        const { pricing } = config;
+        const priceText = pricing ? ` — ${pricing.priceRub} ₽` : '';
+        return [
+          {
+            text: `${config.amount} ⭐${priceText}`,
+            callback_data: buildAmountCallback(config.amount, true),
+          },
+        ];
+      });
 
       const keyboard = KeyboardBuilder.createInlineKeyboard([
         ...buttons,
@@ -239,7 +246,7 @@ export class CallbackQueryHandler {
     amount: number,
   ): Promise<void> {
     // Check if amount is available
-    if (!isAmountAvailable(amount)) {
+    if (!isAmountAvailable(amount, this.pricingConfig)) {
       const errorText = t.buyStars.only50StarsAvailable;
       await this.messageManagementService.editMessage(ctx, userId, errorText);
       return;
@@ -276,7 +283,7 @@ export class CallbackQueryHandler {
     }
 
     // For test claim amounts, check if user can claim
-    if (isTestClaimAmount(amount)) {
+    if (isTestClaimAmount(amount, this.pricingConfig)) {
       const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
       if (!canClaim) {
         const message = t.buyStars.alreadyClaimed
@@ -297,11 +304,16 @@ export class CallbackQueryHandler {
       return;
     }
 
+    // Get pricing for this amount
+    const pricing = getAmountPricing(amount, this.pricingConfig);
+    const priceText = pricing
+      ? `\n💰 Цена: ${pricing.priceRub} ₽ (${pricing.pricePerStar.toFixed(2)} ₽/⭐)`
+      : '';
+
     // Show payment button (mock YooKassa payment)
-    const paymentText = t.buyStars.paymentRequired.replace(
-      '{amount}',
-      amount.toString(),
-    );
+    const paymentText =
+      t.buyStars.paymentRequired.replace('{amount}', amount.toString()) +
+      priceText;
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [
         {
@@ -333,7 +345,7 @@ export class CallbackQueryHandler {
     amount: number,
   ): Promise<void> {
     // Check if amount is available
-    if (!isAmountAvailable(amount)) {
+    if (!isAmountAvailable(amount, this.pricingConfig)) {
       const errorText = t.buyStars.only50StarsAvailable;
       await this.messageManagementService.editMessage(ctx, userId, errorText);
       return;
@@ -351,7 +363,7 @@ export class CallbackQueryHandler {
     }
 
     // For test claim amounts, check if user can claim
-    if (isTestClaimAmount(amount)) {
+    if (isTestClaimAmount(amount, this.pricingConfig)) {
       const canClaim = await this.whitelistService.canClaimTestStars(userId, 1);
       if (!canClaim) {
         const message = t.buyStars.alreadyClaimed
@@ -394,7 +406,7 @@ export class CallbackQueryHandler {
       `User ${userId} (@${username}) confirmed payment for ${amount} stars`,
     );
 
-    const result = isTestClaimAmount(amount)
+    const result = isTestClaimAmount(amount, this.pricingConfig)
       ? await this.starsPurchaseService.purchaseTestStars(userId, username)
       : await this.starsPurchaseService.purchaseStars(userId, username, amount);
 
