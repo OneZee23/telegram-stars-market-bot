@@ -25,6 +25,7 @@ import {
 } from '../utils/callback-data.util';
 import { ContextExtractor } from '../utils/context-extractor.util';
 import { KeyboardBuilder } from '../utils/keyboard-builder.util';
+import { formatPriceForButton } from '../utils/price-formatter.util';
 
 @Injectable()
 export class CallbackQueryHandler {
@@ -198,21 +199,55 @@ export class CallbackQueryHandler {
     if (isWhitelisted && canClaim) {
       // For whitelisted users: show available test claim amounts
       const testAmounts = getTestClaimAmounts(this.pricingConfig);
-      const text = t.buyStars.testModeSelectAmount;
 
-      const buttons = testAmounts.map((config) => {
-        const { pricing } = config;
-        const priceText = pricing ? ` — ${pricing.priceRub} ₽` : '';
-        return [
-          {
-            text: `${config.amount} ⭐${priceText}`,
-            callback_data: buildAmountCallback(config.amount, true),
-          },
-        ];
-      });
+      // Улучшенный приветливый текст инструкции
+      const text = t.buyStars.selectAmount;
+
+      // Формируем кнопки с ценой в формате как на скриншоте: "100 ⭐ (179,00 RUB)"
+      const buttonRows: Array<Array<{ text: string; callback_data: string }>> =
+        [];
+
+      // Размещаем кнопки в 2 колонки
+      for (let i = 0; i < testAmounts.length; i += 2) {
+        const row: Array<{ text: string; callback_data: string }> = [];
+
+        // Первая кнопка в ряду
+        const config1 = testAmounts[i];
+        if (config1) {
+          const priceText = config1.pricing
+            ? formatPriceForButton(config1.pricing.priceRub)
+            : '';
+          const buttonText = priceText
+            ? `${config1.amount} ⭐ (${priceText})`
+            : `${config1.amount} ⭐`;
+          row.push({
+            text: buttonText,
+            callback_data: buildAmountCallback(config1.amount, true),
+          });
+        }
+
+        // Вторая кнопка в ряду (если есть)
+        const config2 = testAmounts[i + 1];
+        if (config2) {
+          const priceText = config2.pricing
+            ? formatPriceForButton(config2.pricing.priceRub)
+            : '';
+          const buttonText = priceText
+            ? `${config2.amount} ⭐ (${priceText})`
+            : `${config2.amount} ⭐`;
+          row.push({
+            text: buttonText,
+            callback_data: buildAmountCallback(config2.amount, true),
+          });
+        }
+
+        if (row.length > 0) {
+          buttonRows.push(row);
+        }
+      }
 
       const keyboard = KeyboardBuilder.createInlineKeyboard([
-        ...buttons,
+        ...buttonRows,
         [{ text: t.mainMenu.back, callback_data: CallbackData.BUY_STARS }],
       ]);
 
@@ -306,14 +341,16 @@ export class CallbackQueryHandler {
 
     // Get pricing for this amount
     const pricing = getAmountPricing(amount, this.pricingConfig);
-    const priceText = pricing
-      ? `\n💰 Цена: ${pricing.priceRub} ₽ (${pricing.pricePerStar.toFixed(2)} ₽/⭐)`
+
+    // Форматируем цену красиво
+    const formattedPrice = pricing
+      ? formatPriceForButton(pricing.priceRub)
       : '';
 
-    // Show payment button (mock YooKassa payment)
-    const paymentText =
-      t.buyStars.paymentRequired.replace('{amount}', amount.toString()) +
-      priceText;
+    // Show payment button (mock YooKassa payment) - улучшенное сообщение
+    const paymentText = `✨ Вы выбрали ${amount} ⭐\n\n${
+      formattedPrice ? `💰 Сумма к оплате: ${formattedPrice}\n\n` : ''
+    }Нажмите кнопку ниже для оплаты через ЮKassa (СБП):`;
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [
         {
