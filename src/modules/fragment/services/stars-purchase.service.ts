@@ -1,4 +1,8 @@
 import { ADMIN_USER_ID } from '@common/constants/admin.constants';
+import {
+  getPriceForAmount,
+  PricingConfig,
+} from '@modules/gateway/config/pricing.config';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { StonfiSwapService } from '@modules/ton/providers/stonfi-swap.provider';
 import { TonBalanceProvider } from '@modules/ton/providers/ton-balance.provider';
@@ -43,16 +47,6 @@ export class StarsPurchaseService {
 
   private readonly TRANSACTION_WAIT_TIME_MS = 3000;
 
-  private readonly PRICE_PER_STAR_RUB = 1.244;
-
-  /**
-   * Fixed price for 50 stars on Fragment (in USD)
-   * We use 0.85 USDT with reserve for 50 stars
-   */
-  private readonly PRICE_50_STARS_USD = 0.75;
-
-  private readonly USDT_RESERVE_MULTIPLIER = 1.133; // 0.85 / 0.75 = 1.133
-
   private startTime?: number;
 
   // Simple flag to track if a purchase is currently being processed
@@ -68,6 +62,7 @@ export class StarsPurchaseService {
     private readonly tonWalletProvider: TonWalletProvider,
     private readonly tonTransactionProvider: TonTransactionProvider,
     private readonly tonBalanceProvider: TonBalanceProvider,
+    private readonly pricingConfig: PricingConfig,
     @InjectEntityManager()
     private readonly em: EntityManager,
   ) {}
@@ -329,7 +324,12 @@ export class StarsPurchaseService {
       await purchaseRepo.save(purchaseRecord);
 
       const processingTime = Date.now() - (this.startTime || Date.now());
-      const priceRub = amount * this.PRICE_PER_STAR_RUB;
+
+      // Get pricing from config
+      const { priceRub, pricePerStar } = getPriceForAmount(
+        amount,
+        this.pricingConfig,
+      );
 
       this.logger.log(
         `Stars purchase completed successfully. User: ${userId}, Request ID: ${buyRequest.req_id}, TX Hash: ${txHash || 'N/A'}`,
@@ -340,7 +340,7 @@ export class StarsPurchaseService {
         recipientUsername,
         amount,
         priceRub,
-        this.PRICE_PER_STAR_RUB,
+        pricePerStar,
         processingTime,
         false,
         isTestPurchase,
@@ -420,8 +420,8 @@ export class StarsPurchaseService {
       const usdtBalance = BigInt(balances.usdt || '0');
       const usdtAmountForStars =
         (starsAmount / 50) *
-        this.PRICE_50_STARS_USD *
-        this.USDT_RESERVE_MULTIPLIER;
+        this.pricingConfig.price50StarsUsd *
+        this.pricingConfig.usdtReserveMultiplier;
       const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6));
 
       const sufficient = usdtBalance >= requiredUsdtNano;
@@ -596,8 +596,8 @@ export class StarsPurchaseService {
   ): Promise<{ txHash: string } | null> {
     const usdtAmountForStars =
       (starsAmount / 50) *
-      this.PRICE_50_STARS_USD *
-      this.USDT_RESERVE_MULTIPLIER;
+      this.pricingConfig.price50StarsUsd *
+      this.pricingConfig.usdtReserveMultiplier;
     const requiredUsdtNano = BigInt(Math.floor(usdtAmountForStars * 1e6));
     const requiredUsdtFormatted = usdtAmountForStars.toFixed(2);
 

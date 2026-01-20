@@ -134,6 +134,13 @@ Telegram Stars Shop — это Telegram бот, который покупает 
    SWAP_SLIPPAGE_TOLERANCE=1
    SWAP_RESERVE_PERCENT=5
    MIN_TON_FOR_FEES=100000000
+
+   # Pricing config (ценообразование)
+   USD_RUB_RATE=78
+   PRICE_50_STARS_USD=0.75
+   USDT_RESERVE_MULTIPLIER=1.133
+   ACQUIRER_FEE_PERCENT=3
+   AVAILABLE_STAR_AMOUNTS=50
    ```
 
 3. **Запустить тесты:**
