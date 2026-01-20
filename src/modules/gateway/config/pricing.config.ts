@@ -122,6 +122,55 @@ export interface StarPricing {
 }
 
 /**
+ * Округляет цену до "красивого" значения, заканчивающегося на 9
+ * Примеры: 71.96 -> 79, 78.88 -> 79, 82.00 -> 89, 152 -> 159, 1208 -> 1299, 11258 -> 11999
+ * @param price Исходная цена
+ * @returns Округленная цена без копеек, заканчивающаяся на 9
+ */
+function roundToCharmPrice(price: number): number {
+  const roundedUp = Math.ceil(price);
+
+  if (roundedUp % 10 === 9 && roundedUp >= price) {
+    return roundedUp;
+  }
+
+  if (roundedUp < 100) {
+    const tens = Math.ceil(roundedUp / 10) * 10;
+    return tens - 1;
+  }
+
+  if (roundedUp < 1000) {
+    const lastDigit = roundedUp % 10;
+    if (lastDigit === 9) {
+      return roundedUp;
+    }
+    return roundedUp - lastDigit + 9;
+  }
+
+  if (roundedUp < 10000) {
+    const lastTwoDigits = roundedUp % 100;
+    if (lastTwoDigits === 99) {
+      return roundedUp;
+    }
+    return roundedUp - lastTwoDigits + 99;
+  }
+
+  if (roundedUp < 100000) {
+    const lastThreeDigits = roundedUp % 1000;
+    if (lastThreeDigits === 999) {
+      return roundedUp;
+    }
+    return roundedUp - lastThreeDigits + 999;
+  }
+
+  const lastFourDigits = roundedUp % 10000;
+  if (lastFourDigits === 9999) {
+    return roundedUp;
+  }
+  return roundedUp - lastFourDigits + 9999;
+}
+
+/**
  * Рассчитать цену для указанного количества звезд
  * @param amount Количество звезд
  * @param config Конфигурация ценообразования
@@ -130,31 +179,19 @@ export function calculatePrice(
   amount: number,
   config: PricingConfig,
 ): StarPricing {
-  // Базовая стоимость за звезду в USD (из цены за 50 звезд)
   const basePricePerStarUsd = config.price50StarsUsd / 50;
-
-  // Базовая стоимость в USD для указанного количества
   const baseCostUsd = amount * basePricePerStarUsd;
-
-  // Конвертируем в рубли
   const baseCostRub = baseCostUsd * config.usdRubRate;
-
-  // Получаем наценку для этого объема
   const markupPercent = getMarkupForAmount(amount);
-
-  // Общая наценка = наценка + комиссия эквайринга
   const totalMarkupPercent = markupPercent + config.acquirerFeePercent;
-
-  // Итоговая цена с учетом наценки
-  const priceRub = baseCostRub * (1 + totalMarkupPercent / 100);
-
-  // Цена за звезду
+  const priceRubRaw = baseCostRub * (1 + totalMarkupPercent / 100);
+  const priceRub = roundToCharmPrice(priceRubRaw);
   const pricePerStar = priceRub / amount;
 
   return {
     amount,
-    priceRub: Math.round(priceRub * 100) / 100, // Округляем до копеек
-    pricePerStar: Math.round(pricePerStar * 10000) / 10000, // Округляем до 4 знаков
+    priceRub,
+    pricePerStar: Math.round(pricePerStar * 10000) / 10000,
     baseCostRub: Math.round(baseCostRub * 100) / 100,
     markupPercent,
     totalMarkupPercent,
