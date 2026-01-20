@@ -62,7 +62,8 @@ export const translations: Record<string, Translations> = {
       forMyself: 'Себе',
       forOther: 'Другому',
       forOtherLocked: '🔒 Другому',
-      selectAmount: 'Выберите количество звезд:',
+      selectAmount:
+        'Пожалуйста, выберите количество Telegram Stars, используя кнопки ниже:',
       testModeSelectAmount:
         '🎁 Тестовый режим\n\nВы можете получить 50 звезд бесплатно (только один раз):',
       enterCustomAmount: 'Ввести количество',
@@ -145,7 +146,8 @@ export const translations: Record<string, Translations> = {
       forMyself: 'Myself',
       forOther: 'Other',
       forOtherLocked: '🔒 Other',
-      selectAmount: 'Select the number of stars:',
+      selectAmount:
+        'Please select the quantity of Telegram Stars using the buttons below:',
       testModeSelectAmount:
         '🎁 Test Mode\n\nYou can get 50 stars for free (one time only):',
       enterCustomAmount: 'Enter custom amount',
