@@ -1,6 +1,5 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { ICreatePayment, YooCheckout } from '@a2seven/yoo-checkout';
-import { PricingConfig } from '@modules/gateway/config/pricing.config';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { EntityManager } from 'typeorm';
@@ -31,7 +30,6 @@ export class YooKassaService {
 
   constructor(
     private readonly config: YooKassaConfig,
-    private readonly pricingConfig: PricingConfig,
     @InjectEntityManager()
     private readonly em: EntityManager,
   ) {
@@ -147,7 +145,6 @@ export class YooKassaService {
   async updatePaymentStatus(
     paymentId: string,
     status: PaymentStatus,
-    yooKassaPaymentId?: string,
   ): Promise<void> {
     const payment = await this.getPayment(paymentId);
     if (!payment) {
@@ -155,10 +152,6 @@ export class YooKassaService {
     }
 
     payment.status = status;
-    if (yooKassaPaymentId) {
-      payment.yooKassaPaymentId = yooKassaPaymentId;
-    }
-
     await this.em.save(payment);
   }
 

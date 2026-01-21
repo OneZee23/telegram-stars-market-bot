@@ -69,8 +69,6 @@ jobs:
             AVAILABLE_STAR_AMOUNTS=${{ secrets.AVAILABLE_STAR_AMOUNTS || '50' }}
             YOOKASSA_SHOP_ID=${{ secrets.YOOKASSA_SHOP_ID }}
             YOOKASSA_SECRET_KEY=${{ secrets.YOOKASSA_SECRET_KEY }}
-            YOOKASSA_WEBHOOK_URL=${{ secrets.YOOKASSA_WEBHOOK_URL }}
-            YOOKASSA_TEST_MODE=${{ secrets.YOOKASSA_TEST_MODE || 'false' }}
             EOF
             chmod 600 /opt/telegram-stars-market-bot/.env
 

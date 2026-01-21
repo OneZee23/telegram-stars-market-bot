@@ -68,7 +68,6 @@ describe('YooKassa Webhook E2E', () => {
       .useValue({
         shopId: 'test_shop_id',
         secretKey: 'test_secret_key',
-        testMode: true,
       })
       .overrideProvider(PricingConfig)
       .useValue({
