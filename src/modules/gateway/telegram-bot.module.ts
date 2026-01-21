@@ -1,6 +1,7 @@
 import { FragmentModule } from '@modules/fragment/fragment.module';
 import { TelegramCoreModule } from '@modules/telegram-core/telegram-core.module';
 import { UserModule } from '@modules/user/user.module';
+import { YooKassaModule } from '@modules/yookassa/yookassa.module';
 import { Logger, Module } from '@nestjs/common';
 import { PricingConfig } from './config/pricing.config';
 import { BotCommandHandler } from './handlers/bot-command.handler';
@@ -13,7 +14,7 @@ import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Module({
-  imports: [TelegramCoreModule, UserModule, FragmentModule],
+  imports: [TelegramCoreModule, UserModule, FragmentModule, YooKassaModule],
   providers: [
     PricingConfig,
     TelegramBotService,
