@@ -1,7 +1,5 @@
 import { StarsPurchaseEntity } from '@modules/fragment/entities/stars-purchase.entity';
 import { FragmentModule } from '@modules/fragment/fragment.module';
-import { PricingConfig } from '@modules/gateway/config/pricing.config';
-import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentEntity } from './entities/payment.entity';
@@ -13,9 +11,8 @@ import { YooKassaController } from './yookassa.controller';
   imports: [
     TypeOrmModule.forFeature([PaymentEntity, StarsPurchaseEntity]),
     FragmentModule,
-    NotificationsModule,
   ],
-  providers: [YooKassaConfig, PricingConfig, YooKassaService],
+  providers: [YooKassaConfig, YooKassaService],
   exports: [YooKassaService],
   controllers: [YooKassaController],
 })
