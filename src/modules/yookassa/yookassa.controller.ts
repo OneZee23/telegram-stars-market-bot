@@ -1,4 +1,7 @@
-import { StarsPurchaseEntity } from '@modules/fragment/entities/stars-purchase.entity';
+import {
+  StarsPurchaseEntity,
+  StarsPurchaseStatus,
+} from '@modules/fragment/entities/stars-purchase.entity';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import { getTranslations } from '@modules/gateway/i18n/translations';
 import { MessageManagementService } from '@modules/gateway/services/message-management.service';
@@ -97,16 +100,19 @@ export class YooKassaController {
       return;
     }
 
-    // Update message to show payment success
-    await this.updatePaymentSuccessMessage(dbPayment);
-
+    // Update message based on purchase status
     if (dbPayment.starsPurchaseId) {
       this.logger.debug(
         `Stars purchase already exists for payment ${dbPayment.id}`,
         { starsPurchaseId: dbPayment.starsPurchaseId },
       );
+      // Check purchase status and update message accordingly
+      await this.updateMessageBasedOnPurchaseStatus(dbPayment);
       return;
     }
+
+    // Update message to show payment success (purchase not started yet)
+    await this.updatePaymentSuccessMessage(dbPayment);
 
     const purchaseResult = await this.createStarsPurchase(dbPayment);
 
@@ -136,6 +142,65 @@ export class YooKassaController {
       purchaseId: purchaseEntity.id,
       requestId: purchaseResult.requestId,
     });
+  }
+
+  /**
+   * Update message based on purchase status
+   */
+  private async updateMessageBasedOnPurchaseStatus(
+    payment: PaymentEntity,
+  ): Promise<void> {
+    try {
+      if (!payment.starsPurchaseId) {
+        return;
+      }
+
+      const purchaseRepo = this.em.getRepository(StarsPurchaseEntity);
+      const purchase = await purchaseRepo.findOne({
+        where: { id: payment.starsPurchaseId },
+      });
+
+      if (!purchase) {
+        this.logger.warn(
+          `Purchase not found: ${payment.starsPurchaseId} for payment ${payment.id}`,
+        );
+        return;
+      }
+
+      const user = await this.userService.getOrCreateUser(payment.userId);
+      const t = getTranslations(user.language);
+      const formattedPrice = formatPriceForButton(payment.priceRub);
+
+      let message: string;
+
+      if (purchase.status === StarsPurchaseStatus.COMPLETED) {
+        // Purchase completed - show success message
+        message = t.buyStars.purchaseCompleted
+          .replace('{amount}', payment.starsAmount.toString())
+          .replace('{price}', formattedPrice);
+      } else if (purchase.status === StarsPurchaseStatus.FAILED) {
+        // Purchase failed - show error message
+        message = t.buyStars.purchaseError.replace(
+          '{error}',
+          purchase.error || 'Unknown error',
+        );
+      } else {
+        // Purchase still in progress - show processing message
+        message = t.buyStars.paymentSuccess
+          .replace('{amount}', payment.starsAmount.toString())
+          .replace('{price}', formattedPrice);
+      }
+
+      await this.messageManagementService.editMessageByUserId(
+        this.telegraf.telegram,
+        payment.userId,
+        message,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to update message based on purchase status for user ${payment.userId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**

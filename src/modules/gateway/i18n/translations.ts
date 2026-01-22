@@ -37,6 +37,7 @@ export interface Translations {
     invalidEmail: string;
     paymentCreated: string;
     paymentSuccess: string;
+    purchaseCompleted: string;
     purchaseProcessing: string;
   };
   errors: {
@@ -130,6 +131,11 @@ export const translations: Record<string, Translations> = {
         '💰 Сумма: {price}\n\n' +
         '⏳ Идет процесс клейминга звезд...\n\n' +
         'Пожалуйста, подождите от 1 минуты до 5 минут.',
+      purchaseCompleted:
+        '✅ Покупка успешно завершена!\n\n' +
+        '✨ Количество: {amount} ⭐\n' +
+        '💰 Сумма: {price}\n\n' +
+        '🎉 Звезды успешно отправлены получателю!',
       purchaseProcessing:
         '⏳ Идет покупка и отправка звезд...\n\n' +
         'Пожалуйста, подождите от 1 минуты до 5 минут (в редких случаях).\n\n' +
@@ -229,6 +235,11 @@ export const translations: Record<string, Translations> = {
         '💰 Price: {price}\n\n' +
         '⏳ Claiming stars in progress...\n\n' +
         'Please wait from 1 minute to 5 minutes.',
+      purchaseCompleted:
+        '✅ Purchase successfully completed!\n\n' +
+        '✨ Amount: {amount} ⭐\n' +
+        '💰 Price: {price}\n\n' +
+        '🎉 Stars have been successfully sent to the recipient!',
       purchaseProcessing:
         '⏳ Purchase and sending stars in progress...\n\n' +
         'Please wait from 1 minute to 5 minutes (in rare cases).\n\n' +
