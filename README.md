@@ -1,82 +1,75 @@
 # ⭐ Telegram Stars Shop
 
-> Автоматизированный магазин Telegram Stars дешевле официальной цены на 25-34%
+> Automated Telegram Stars marketplace — 25-34% cheaper than official prices
 
-**Статус:** 🚧 В разработке (MVP) | **Старт:** 19.12.2025 | **Формат:** Proof of Work
-
----
-
-## С чего началось
-
-Проект начался с простого наблюдения: Telegram Stars можно купить через Fragment за $0.015/шт, а через Apple/Google Play — за $0.024/шт. Разница 30-40%.
-
-Но для покупки через Fragment нужен KYC, TON кошелёк и понимание криптовалюты. Порог входа высокий.
-
-Идея: создать автоматизированный магазин, который покупает Stars через Fragment за TON и продаёт их пользователям дешевле официальной цены, с оплатой через СБП.
-
-Первый пост о проекте — [День 0/30 в Telegram канале](https://t.me/onezee_co).
-
-Формат разработки — "Proof of Work": показываю весь процесс от идеи до первых продаж в открытом режиме.
+**Status:** 🚧 MVP in Development | **Started:** Dec 19, 2025 | **Format:** Proof of Work
 
 ---
 
-## 📋 О проекте
+## TL;DR
 
-Telegram Stars Shop — это Telegram бот, который покупает Stars через Fragment API за TON и продаёт их пользователям дешевле официальной цены.
+Telegram Stars can be bought via Fragment for $0.015/star vs $0.024/star on Apple/Google Play (30-40% difference). This bot automates the process: buys Stars via Fragment API using TON and sells them to users cheaper with SBP/card payments.
 
-### 💰 Экономика
-
-- **Себестоимость:** ~0.67 ₽/⭐ (через Fragment, своп USDT → TON)
-- **Цена продажи:** ~0.79 ₽/⭐ за 50 звезд (наценка ~20%)
-- **Экономия для пользователя:** ~12-15% по сравнению с Apple/Google Play и конкурентами
-
-### 🎯 Цель MVP
-
-Минимум 1 реальная продажа в течение 30 дней от старта (до 18.01.2026).
+**Target audience:** Russian-speaking Telegram users (initially).
 
 ---
 
-## 📚 Документация
+## The Idea
 
-Полная документация проекта находится в папке [`docs/`](./docs/):
+The project started with a simple observation: Telegram Stars are available through Fragment at $0.015/star, while official stores charge $0.024/star — a 30-40% markup.
 
-<table>
-  <tr>
-    <td width="33%">
-      <h3><a href="./docs/BUSINESS_REQUIREMENTS.md">📋 Бизнес-требования</a></h3>
-      <p>Функциональные и нефункциональные требования к MVP, анализ рентабельности, целевая аудитория</p>
-    </td>
-    <td width="33%">
-      <h3><a href="./docs/TECHNICAL_SPECIFICATION.md">🔧 Техническое решение</a></h3>
-      <p>Архитектура, технологический стек, компоненты системы, интеграции, деплой</p>
-    </td>
-    <td width="33%">
-      <h3><a href="./docs/EDGE_CASES.md">⚠️ Edge Cases</a></h3>
-      <p>Пограничные случаи, обработка ошибок, сценарии работы системы, мониторинг</p>
-    </td>
-  </tr>
-</table>
+However, buying via Fragment requires KYC, a TON wallet, and crypto knowledge — a high entry barrier.
+
+**Solution:** An automated shop that purchases Stars via Fragment (TON) and resells them below official prices, accepting SBP/card payments.
+
+First post: [Day 0/30 in Telegram channel](https://t.me/onezee_co)
+
+Development follows a "Proof of Work" format: the entire process from idea to first sales is documented openly.
 
 ---
 
-## Технологический стек
+## Economics
 
-- **Backend:** TypeScript, NestJS
-- **Database:** PostgreSQL, TypeORM
-- **Bot:** Telegram Bot API (Inline кнопки)
-- **Payments:** YooKassa (СБП, карты)
-- **Crypto:** Fragment API, TON
-- **Инфраструктура:** Docker, DigitalOcean, Grafana
+- **Cost basis:** ~0.67 ₽/⭐ (via Fragment, USDT → TON swap)
+- **Sale price:** ~0.79 ₽/⭐ for 50 stars (~20% markup)
+- **User savings:** ~12-15% vs Apple/Google Play and competitors
+
+### MVP Goal
+
+At least 1 real sale within 30 days from start (by Jan 18, 2026).
 
 ---
 
-## Быстрый старт
+## Tech Stack
 
-### Запуск тестов
+```
+Backend:     TypeScript, NestJS
+Database:    PostgreSQL, TypeORM
+Bot:         Telegram Bot API (Inline buttons)
+Payments:    YooKassa (SBP, cards)
+Crypto:      Fragment API, TON
+Infra:       Docker, DigitalOcean, Grafana
+```
 
-Для запуска e2e тестов необходимо:
+---
 
-1. **Запустить PostgreSQL в Docker:**
+## Documentation
+
+Full project documentation is in [`docs/`](./docs/):
+
+| Document | Description |
+|----------|-------------|
+| [📋 Business Requirements](./docs/BUSINESS_REQUIREMENTS.md) | Functional & non-functional requirements, profitability analysis, target audience |
+| [🔧 Technical Specification](./docs/TECHNICAL_SPECIFICATION.md) | Architecture, tech stack, system components, integrations, deployment |
+| [⚠️ Edge Cases](./docs/EDGE_CASES.md) | Edge cases, error handling, system scenarios, monitoring |
+
+---
+
+## Quick Start
+
+### Running Tests
+
+1. **Start PostgreSQL in Docker:**
 
    ```bash
    docker run -d \
@@ -88,205 +81,205 @@ Telegram Stars Shop — это Telegram бот, который покупает 
      postgres
    ```
 
-2. **Создать `.env` файл в корне проекта:**
+2. **Create `.env` file in project root:**
 
-   ```env
-   ENV=dev
-   PORT=3000
+    ```env
+    ENV=dev
+    PORT=3000
+    APP_NAME=telegram-stars-market-service
 
-   APP_NAME=telegram-stars-market-service
+    # Use for local dev: lt --port 3000 or ngrok
+    PUBLIC_URL=https://asd.ngrok-free.app
 
-   # Use for local dev:
-   # lt --port 3000 or ngrok
-   PUBLIC_URL=https://asd.ngrok-free.app
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_NAME=postgres
+    DB_USER=postgres
+    DB_PASS=postgres
+    DB_LOG=false
+    DB_SYNC=false
+    DB_MIGRATE=false
 
-   DB_HOST=localhost
-   DB_PORT=5432
-   DB_NAME=postgres
-   DB_USER=postgres
-   DB_PASS=postgres
-   DB_LOG=false
-   DB_SYNC=false
-   DB_MIGRATE=false
+    TYPEORM_CLI_HOST=localhost
+    TYPEORM_CLI_PORT=5432
+    TYPEORM_CLI_USERNAME=postgres
+    TYPEORM_CLI_PASSWORD=postgres
+    TYPEORM_CLI_DATABASE=postgres
 
-   TYPEORM_CLI_HOST=localhost
-   TYPEORM_CLI_PORT=5432
-   TYPEORM_CLI_USERNAME=postgres
-   TYPEORM_CLI_PASSWORD=postgres
-   TYPEORM_CLI_DATABASE=postgres
+    # Telegram bot config (test values OK)
+    BOT_TOKEN=8001958772:asd
+    TELEGRAM_WEBHOOK_API_KEY=asd
 
-   # Telegram bot config (можно использовать тестовые значения)
-   BOT_TOKEN=8001958772:asd
-   TELEGRAM_WEBHOOK_API_KEY=asd
+    # Fragment API config
+    # Get cookies and API hash after manual auth on fragment.com
+    # See docs for detailed instructions
+    FRAGMENT_COOKIES={"stel_ssid":"...","stel_ton_token":"..."}
+    FRAGMENT_API_HASH=...
+    FRAGMENT_MNEMONIC=word1 word2 ... word24
+    TONCENTER_RPC_URL=https://toncenter.com/api/v2/jsonRPC
+    TONCENTER_RPC_API_KEY=...
 
-   # Fragment API config (для тестов покупки звезд)
-   # Получить куки и API hash можно после ручной авторизации на fragment.com
-   # Подробные инструкции в документации
-   FRAGMENT_COOKIES={"stel_ssid":"...","stel_ton_token":"..."}
-   FRAGMENT_API_HASH=...
-   FRAGMENT_MNEMONIC=word1 word2 ... word24
-   TONCENTER_RPC_URL=https://toncenter.com/api/v2/jsonRPC
-   TONCENTER_RPC_API_KEY=...
+    # DEX config (USDT → TON swap)
+    DEX_PROVIDER=stonfi
+    USDT_JETTON_ADDRESS=EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs
+    SWAP_SLIPPAGE_TOLERANCE=1
+    SWAP_RESERVE_PERCENT=5
+    MIN_TON_FOR_FEES=100000000
 
-   # DEX config (для свопа USDT → TON)
-   DEX_PROVIDER=stonfi
-   USDT_JETTON_ADDRESS=EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs
-   SWAP_SLIPPAGE_TOLERANCE=1
-   SWAP_RESERVE_PERCENT=5
-   MIN_TON_FOR_FEES=100000000
+    # Pricing config
+    USD_RUB_RATE=78
+    PRICE_50_STARS_USD=0.75
+    USDT_RESERVE_MULTIPLIER=1.133
+    ACQUIRER_FEE_PERCENT=3
+    AVAILABLE_STAR_AMOUNTS=50
+    ```
 
-   # Pricing config (ценообразование)
-   USD_RUB_RATE=78
-   PRICE_50_STARS_USD=0.75
-   USDT_RESERVE_MULTIPLIER=1.133
-   ACQUIRER_FEE_PERCENT=3
-   AVAILABLE_STAR_AMOUNTS=50
-   ```
+3. **Run tests:**
 
-3. **Запустить тесты:**
+**Via VSCode/Cursor Testing:**
+- Open any test file (e.g., `test/e2e/app.e2e.spec.ts`)
+- Click "Run Test" or use Testing panel in Cursor
+- Tests run automatically using `.env` settings
 
-   **Через Cursor Testing:**
-   - Откройте любой тестовый файл (например, `test/e2e/app.e2e.spec.ts`)
-   - Нажмите на кнопку "Run Test" над тестом или используйте панель Testing в Cursor
-   - Тесты запустятся автоматически с использованием настроек из `.env`
+**Via CLI:**
 
-   **Через командную строку:**
+  ```bash
+  # All e2e tests
+  npm run test:e2e
 
-   ```bash
-   # Все e2e тесты
-   npm run test:e2e
+  # Unit tests
+  npm test
 
-   # Unit тесты
-   npm test
+  # Coverage
+  npm run test:cov
+  ```
 
-   # Тесты с покрытием
-   npm run test:cov
-   ```
+## Implemented Features
 
-### Структура тестов
+### ✅ Fragment API Integration
 
-- **E2E тесты** (`test/e2e/`):
-  - `stars-purchase.e2e.spec.ts` — тесты покупки звезд через Fragment API
-  - `telegram-bot-flow.e2e.spec.ts` — тесты пользовательского флоу взаимодействия с ботом (все зависимости замоканы)
-
----
-
-## 🚀 Реализованный функционал
-
-### ✅ Интеграция с Fragment API
-
-- Покупка Telegram Stars через Fragment API
-- Подписание и отправка транзакций в TON блокчейн
-- Управление cookies и API hash для авторизации
-- Обработка rate limits и ошибок
-- Своп USDT → TON через Ston.Fi (Omniston SDK) для оптимизации стоимости
+- Purchase Telegram Stars via Fragment API
+- Sign and send transactions to TON blockchain
+- Cookie and API hash management for auth
+- Rate limit and error handling
+- USDT → TON swap via Ston.Fi (Omniston SDK) for cost optimization
 
 ### ✅ Telegram Bot
 
-- Команда `/start` с главным меню
-- Inline кнопки для навигации
-- Выбор получателя звезд (себе/другому)
-- Выбор количества звезд (динамическая конфигурация, минимум 50)
-- Флоу покупки: проверка USDT баланса → моковая оплата → валидация whitelist/claim → своп USDT→TON → покупка через Fragment
-- Многоязычность (русский/английский)
-- Бот: [@fraggram_bot](https://t.me/fraggram_bot)
+- `/start` command with main menu
+- Inline buttons for navigation
+- Recipient selection (self/other)
+- Star amount selection (dynamic config, min 50)
+- Purchase flow: USDT balance check → payment → whitelist/claim validation → USDT→TON swap → Fragment purchase
+- Multi-language (Russian/English)
+- Bot: [@fraggram_bot](https://t.me/fraggram_bot)
 
-### ✅ База данных
+### ✅ Database
 
-- Хранение пользователей (`UserEntity`)
-- Хранение покупок (`StarsPurchaseEntity`)
-- Отслеживание статусов покупок (PENDING, PROCESSING, COMPLETED, FAILED)
-- Индексы для оптимизации запросов
+- User storage (`UserEntity`)
+- Purchase storage (`StarsPurchaseEntity`)
+- Purchase status tracking (PENDING, PROCESSING, COMPLETED, FAILED)
+- Query optimization indexes
 
-### ✅ Whitelist система
+### ✅ Whitelist System
 
-- Управление whitelist через файл `assets/whitelist.txt`
-- Автоматическая синхронизация при запуске приложения
-- Тестовая покупка 50 звезд для whitelist пользователей (один раз)
-- Проверка whitelist при выборе количества звезд
+- Whitelist management via `assets/whitelist.txt`
+- Auto-sync on app startup
+- Test purchase of 50 stars for whitelist users (one-time)
+- Whitelist check on star amount selection
 
-### ✅ Обработка пользователей
+### ✅ User Handling
 
-- Автоматическое создание пользователей в БД при первом взаимодействии
-- Обновление метаданных (username, language)
-- Логирование всех взаимодействий с ботом
+- Auto-create users in DB on first interaction
+- Metadata updates (username, language)
+- Logging of all bot interactions
 
-### ✅ Защита от параллельных покупок
+### ✅ Concurrent Purchase Protection
 
-- Флаг `isProcessingPurchase` предотвращает одновременные покупки
-- Возврат ошибки `QUEUE_BUSY` при попытке параллельной покупки
-- Повторная проверка USDT баланса перед покупкой (защита от race conditions)
-- Очередь транзакций в памяти (TODO: замена на RabbitMQ для production)
+- `isProcessingPurchase` flag prevents simultaneous purchases
+- `QUEUE_BUSY` error on parallel purchase attempts
+- Re-check USDT balance before purchase (race condition protection)
+- In-memory transaction queue (TODO: replace with RabbitMQ for production and for more productivity)
 
-### ✅ Управление прокси
+### ✅ Proxy Management
 
-- Динамическая система использования нескольких прокси с автоматическим failover
-- Отслеживание работоспособности прокси
-- Система оповещений об истечении срока действия прокси
+- Dynamic multi-proxy system with auto failover
+- Proxy health tracking
+- Proxy expiration alerts
 
-### ✅ Мониторинг
+### ✅ Payment Integration (YooKassa)
 
-- Публичный канал [@fraggram_alerts](https://t.me/fraggram_alerts) для алертов и статистики
-- Логирование всех покупок, ошибок и важных событий
-- Прозрачность работы системы в реальном времени
+- YooKassa payment gateway integration
+- SBP and card payments
+- Webhook handling for payment status updates
+- Payment entity tracking
+- Receipt generation
+
+### ✅ Monitoring
+
+- Public channel [@fraggram_alerts](https://t.me/fraggram_alerts) for alerts and stats
+- Logging of all purchases, errors, and important events
+- Real-time system transparency
 
 ---
 
----
+## Roadmap for MVP
 
-## 📅 Roadmap
+### Completed ✅
 
-- [x] Анализ рынка и конкурентов
-- [x] Бизнес-требования и техническое решение
-- [x] Разработка MVP
-  - [x] Telegram Bot (Inline кнопки)
+- [x] Market and competitor analysis
+- [x] Business requirements and technical spec
+- [x] MVP Development
+  - [x] Telegram Bot (Inline buttons)
   - [x] Backend API (NestJS)
-  - [x] Интеграция с Fragment API
-  - [x] База данных для хранения покупок
-  - [x] Whitelist система для тестирования
-  - [x] Обработка пользователей при взаимодействии
-  - [x] Логирование всех взаимодействий
-  - [x] Своп USDT → TON через Ston.Fi
-  - [x] Система мониторинга через Telegram канал
-  - [x] Оптимизация прокси с failover
-  - [x] E2E тесты для пользовательского флоу
-  - [ ] Интеграция YooKassa (в процессе)
-  - [ ] Замена очереди на RabbitMQ
-  - [ ] Расчет финальных расценок и прайс-листа
-- [ ] Регистрация ИП (в процессе)
-- [ ] Подключение эквайринга
-- [ ] Бета-тест
-- [ ] Запуск MVP
+  - [x] Fragment API integration
+  - [x] Database for purchase storage
+  - [x] Whitelist system for testing
+  - [x] User handling on interaction
+  - [x] Interaction logging
+  - [x] USDT → TON swap via Ston.Fi
+  - [x] Monitoring via Telegram channel
+  - [x] Proxy optimization with failover
+  - [x] E2E tests for user flow
+  - [x] YooKassa payment integration
+
+### In Progress 🚧
+
+- [ ] Final pricing calculations and price list (100, 200 and more stars)
+- [ ] Business registration (IP)
+- [ ] Production payment gateway setup
+- [ ] Beta testing
+- [ ] MVP launch
 
 ---
 
-## Формат разработки
+## Development Format
 
-Проект разрабатывается в открытом режиме (open-source) в рамках формата "Proof of Work".
+The project is developed openly (open-source) in a "Proof of Work" format:
 
-- Все этапы документируются
-- Код публикуется в этом репозитории
-- Прогресс фиксируется в ежедневных постах в [Telegram канале](https://t.me/onezee_co)
-- Уведомления о статусе проекта приходят в публичную [группу разработки](https://t.me/fraggram_alerts)
-- Можно запускать локально и помогать с разработкой
-
----
-
-## 🤝 Участие
-
-Проект находится в активной разработке. Если хотите помочь или есть вопросы — создавайте Issues или PR.
-
-Можно запускать проект локально и тестировать. Инструкции по настройке окружения будут добавлены позже.
+- All stages are documented
+- Code is published in this repository
+- Progress is tracked in daily posts in [Telegram channel](https://t.me/onezee_co)
+- Project status notifications go to public [dev group](https://t.me/fraggram_alerts)
+- Can be run locally and contribute to development
 
 ---
 
-## 📄 Лицензия
+## Contributing
+
+The project is actively under development. If you want to help or have questions — create Issues or PRs.
+
+You can run the project locally and test it. Environment setup instructions will be added later.
+
+---
+
+## License
 
 MIT
 
 ---
 
-## Ссылки
+## Links
 
-- [Telegram канал](https://t.me/onezee_co) — ежедневный прогресс
-- [YouTube](https://www.youtube.com/c/onezee) — итоговое видео будет здесь
+- [Telegram Channel](https://t.me/onezee_co) — daily progress
+- [YouTube](https://www.youtube.com/c/onezee) — final video will be here
