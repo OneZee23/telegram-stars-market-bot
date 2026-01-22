@@ -170,6 +170,9 @@ export class StonfiSwapService {
     }>((resolve, reject) => {
       let subscription: any;
       let quoteReceived = false;
+      let ackReceived = false;
+      let pendingQuoteEvent: any = null;
+      let ackTimeoutId: NodeJS.Timeout | null = null;
       const timeoutId = setTimeout(() => {
         if (subscription) {
           subscription.unsubscribe();
@@ -183,24 +186,83 @@ export class StonfiSwapService {
         next: (event: any) => {
           if (event.type === 'ack') {
             this.logger.debug('Quote request acknowledged');
+            ackReceived = true;
+            if (ackTimeoutId) {
+              clearTimeout(ackTimeoutId);
+              ackTimeoutId = null;
+            }
+            // If we already received quoteUpdated before ack, resolve now
+            if (pendingQuoteEvent) {
+              quoteReceived = true;
+              clearTimeout(timeoutId);
+              subscription.unsubscribe();
+              resolve(pendingQuoteEvent);
+            }
           } else if (event.type === 'quoteUpdated') {
-            quoteReceived = true;
-            clearTimeout(timeoutId);
-            subscription.unsubscribe();
-            resolve(event);
+            if (!ackReceived) {
+              // Store the quote event and wait for ack
+              this.logger.debug(
+                'Received quoteUpdated before ack, waiting for ack...',
+              );
+              pendingQuoteEvent = event;
+              // Set a timeout to resolve anyway if ack doesn't come within 3 seconds
+              ackTimeoutId = setTimeout(() => {
+                if (!ackReceived && pendingQuoteEvent) {
+                  this.logger.warn(
+                    'Ack not received within timeout, but resolving with quoteUpdated anyway',
+                  );
+                  quoteReceived = true;
+                  clearTimeout(timeoutId);
+                  if (subscription) {
+                    subscription.unsubscribe();
+                  }
+                  resolve(pendingQuoteEvent);
+                }
+              }, 3000); // Wait 3 seconds for ack
+            } else {
+              // Ack already received, resolve immediately
+              quoteReceived = true;
+              clearTimeout(timeoutId);
+              if (ackTimeoutId) {
+                clearTimeout(ackTimeoutId);
+              }
+              subscription.unsubscribe();
+              resolve(event);
+            }
           } else if (event.type === 'noQuote') {
             clearTimeout(timeoutId);
+            if (ackTimeoutId) {
+              clearTimeout(ackTimeoutId);
+            }
             subscription.unsubscribe();
             reject(new Error('No quote available'));
           }
         },
         error: (error: unknown) => {
           clearTimeout(timeoutId);
+          if (ackTimeoutId) {
+            clearTimeout(ackTimeoutId);
+          }
           if (subscription) {
             subscription.unsubscribe();
           }
           const errorMessage =
             error instanceof Error ? error.message : String(error);
+
+          // If we have a pending quote event and the error is about missing ack,
+          // try to resolve with the pending quote anyway
+          if (
+            pendingQuoteEvent &&
+            errorMessage.includes('quoteUpdated') &&
+            errorMessage.includes('ack')
+          ) {
+            this.logger.warn(
+              `Received error about missing ack, but we have a quote. Resolving with quote anyway: ${errorMessage}`,
+            );
+            resolve(pendingQuoteEvent);
+            return;
+          }
+
           this.logger.error(`Quote observable error: ${errorMessage}`);
           reject(error);
         },
