@@ -13,6 +13,7 @@ export interface CreatePaymentParams {
   priceRub: number;
   returnUrl?: string;
   isTestPurchase?: boolean;
+  email?: string;
 }
 
 export interface CreatePaymentResult {
@@ -78,7 +79,7 @@ export class YooKassaService {
         description: `Покупка ${params.starsAmount} Telegram Stars`,
         receipt: {
           customer: {
-            email: 'noreply@onezee.ru', // Required for receipt, using default email
+            email: params.email || 'nikita.shevelev123@gmail.com', // Required for receipt
           },
           items: [
             {

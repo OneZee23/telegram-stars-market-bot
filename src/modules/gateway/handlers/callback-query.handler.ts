@@ -13,7 +13,6 @@ import {
 } from '../config/star-amounts.config';
 import {
   buildAmountCallback,
-  buildPaymentCallback,
   CallbackData,
 } from '../constants/callback-data.constants';
 import { getTranslations } from '../i18n/translations';
@@ -341,6 +340,65 @@ export class CallbackQueryHandler {
       return;
     }
 
+    // Check if user has email, if not - request it
+    const user = await this.userService.getOrCreateUser(userId);
+    if (!user.email) {
+      // Request email
+      this.userStateService.setState(userId, UserState.ENTERING_EMAIL, amount);
+      const emailText = t.buyStars.emailRequired;
+      const keyboard = KeyboardBuilder.createInlineKeyboard([
+        [
+          {
+            text: t.mainMenu.back,
+            callback_data: CallbackData.BUY_FOR_MYSELF,
+          },
+        ],
+      ]);
+
+      await this.messageManagementService.editMessage(
+        ctx,
+        userId,
+        emailText,
+        keyboard,
+      );
+      return;
+    }
+
+    // User has email, proceed to payment confirmation
+    await this.proceedToPayment(
+      ctx,
+      userId,
+      t,
+      userContext,
+      amount,
+      user.email,
+    );
+  }
+
+  async proceedToPaymentAfterEmail(
+    ctx: Context,
+    userId: string,
+    amount: number,
+    email: string,
+  ): Promise<void> {
+    const userContext = await ContextExtractor.getUserContext(
+      ctx,
+      this.userService,
+    );
+    if (!userContext) return;
+
+    const t = getTranslations(userContext.language);
+    await this.proceedToPayment(ctx, userId, t, userContext, amount, email);
+  }
+
+  private async proceedToPayment(
+    ctx: Context,
+    userId: string,
+    t: ReturnType<typeof getTranslations>,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+    amount: number,
+    email: string,
+  ): Promise<void> {
     // Get pricing for this amount
     const pricing = getAmountPricing(amount, this.pricingConfig);
 
@@ -349,39 +407,31 @@ export class CallbackQueryHandler {
       ? formatPriceForButton(pricing.priceRub)
       : '';
 
-    // Show payment button (mock YooKassa payment) - улучшенное сообщение
+    // Show payment button - сразу создаем платеж и показываем ссылку
     const paymentText = `✨ Вы выбрали ${amount} ⭐\n\n${
       formattedPrice ? `💰 Сумма к оплате: ${formattedPrice}\n\n` : ''
-    }Нажмите кнопку ниже для оплаты через ЮKassa (СБП):`;
-    const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [
-        {
-          text: t.buyStars.payButton,
-          callback_data: buildPaymentCallback(amount),
-        },
-      ],
-      [
-        {
-          text: t.mainMenu.back,
-          callback_data: CallbackData.BUY_FOR_MYSELF,
-        },
-      ],
-    ]);
+    }Создаю платеж...`;
 
-    await this.messageManagementService.editMessage(
+    await this.messageManagementService.editMessage(ctx, userId, paymentText);
+
+    // Create payment immediately
+    await this.handleConfirmPaymentWithEmail(
       ctx,
       userId,
-      paymentText,
-      keyboard,
+      t,
+      userContext,
+      amount,
+      email,
     );
   }
 
-  private async handleConfirmPayment(
+  private async handleConfirmPaymentWithEmail(
     ctx: Context,
     userId: string,
     t: ReturnType<typeof getTranslations>,
     userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
     amount: number,
+    email: string,
   ): Promise<void> {
     // Check if amount is available
     if (!isAmountAvailable(amount, this.pricingConfig)) {
@@ -443,14 +493,6 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show processing message
-    const processingText = t.buyStars.purchaseProcessing;
-    await this.messageManagementService.editMessage(
-      ctx,
-      userId,
-      processingText,
-    );
-
     // Create payment in YooKassa (both test and regular purchases go through YooKassa)
     const isTestPurchase = isTestClaimAmount(amount, this.pricingConfig);
 
@@ -458,7 +500,7 @@ export class CallbackQueryHandler {
       `User ${userId} (@${username}) creating ${isTestPurchase ? 'test' : 'regular'} payment for ${amount} stars, ${pricing.priceRub} RUB`,
     );
 
-    // Create YooKassa payment (test mode will be handled by YooKassa config)
+    // Create YooKassa payment with email
     const paymentResult = await this.yooKassaService.createPayment({
       userId,
       recipientUsername: username,
@@ -466,6 +508,7 @@ export class CallbackQueryHandler {
       priceRub: pricing.priceRub,
       returnUrl: 'https://t.me/onezee_co',
       isTestPurchase,
+      email,
     });
 
     if (!paymentResult.success || !paymentResult.confirmationUrl) {
@@ -477,17 +520,15 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Send payment link to user
-    const paymentText =
-      `💳 Оплата через ЮKassa\n\n` +
-      `✨ Количество: ${amount} ⭐\n` +
-      `💰 Сумма: ${formatPriceForButton(pricing.priceRub)}\n\n` +
-      `Нажмите кнопку ниже для перехода к оплате:`;
+    // Show payment link - сразу открываем ссылку или показываем кнопку
+    const paymentText = t.buyStars.paymentCreated
+      .replace('{amount}', amount.toString())
+      .replace('{price}', formatPriceForButton(pricing.priceRub));
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [
         {
-          text: '💳 Оплатить',
+          text: '💳 Перейти к оплате',
           url: paymentResult.confirmationUrl,
         },
       ],
@@ -504,6 +545,43 @@ export class CallbackQueryHandler {
       userId,
       paymentText,
       keyboard,
+    );
+  }
+
+  private async handleConfirmPayment(
+    ctx: Context,
+    userId: string,
+    t: ReturnType<typeof getTranslations>,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+    amount: number,
+  ): Promise<void> {
+    // Check if amount is available
+    if (!isAmountAvailable(amount, this.pricingConfig)) {
+      const errorText = t.buyStars.only50StarsAvailable;
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Get user email from database
+    const user = await this.userService.getOrCreateUser(userId);
+    if (!user.email) {
+      // Should not happen, but handle gracefully
+      const errorText = t.buyStars.purchaseError.replace(
+        '{error}',
+        'Email not found. Please restart the purchase flow.',
+      );
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Delegate to handleConfirmPaymentWithEmail
+    await this.handleConfirmPaymentWithEmail(
+      ctx,
+      userId,
+      t,
+      userContext,
+      amount,
+      user.email,
     );
   }
 
@@ -534,13 +612,13 @@ export class CallbackQueryHandler {
     t: ReturnType<typeof getTranslations>,
   ): Promise<void> {
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
       [
         {
           text: t.mainMenu.buyStars,
           callback_data: CallbackData.BUY_STARS,
         },
       ],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
     ]);
 
     await this.messageManagementService.editMessage(

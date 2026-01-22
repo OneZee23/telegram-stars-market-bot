@@ -33,6 +33,10 @@ export interface Translations {
     insufficientBalance: string;
     paymentRequired: string;
     payButton: string;
+    emailRequired: string;
+    invalidEmail: string;
+    paymentCreated: string;
+    paymentSuccess: string;
     purchaseProcessing: string;
   };
   errors: {
@@ -110,6 +114,22 @@ export const translations: Record<string, Translations> = {
         '💳 Оплата {amount} звезд\n\n' +
         'Нажмите кнопку ниже для оплаты через ЮKassa (СБП):',
       payButton: '💳 Оплатить через ЮKassa',
+      emailRequired:
+        '📧 Для оплаты через ЮKassa требуется email адрес\n\n' +
+        'Пожалуйста, введите ваш email адрес:',
+      invalidEmail:
+        '❌ Неверный email адрес. Пожалуйста, введите корректный email.',
+      paymentCreated:
+        '✅ Платеж создан!\n\n' +
+        '✨ Количество: {amount} ⭐\n' +
+        '💰 Сумма: {price}\n\n' +
+        'Нажмите кнопку ниже для перехода к оплате:',
+      paymentSuccess:
+        '✅ Оплата успешно получена!\n\n' +
+        '✨ Количество: {amount} ⭐\n' +
+        '💰 Сумма: {price}\n\n' +
+        '⏳ Идет процесс клейминга звезд...\n\n' +
+        'Пожалуйста, подождите от 1 минуты до 5 минут.',
       purchaseProcessing:
         '⏳ Идет покупка и отправка звезд...\n\n' +
         'Пожалуйста, подождите от 1 минуты до 5 минут (в редких случаях).\n\n' +
@@ -194,6 +214,21 @@ export const translations: Record<string, Translations> = {
         '💳 Payment for {amount} stars\n\n' +
         'Click the button below to pay via YooKassa (SBP):',
       payButton: '💳 Pay via YooKassa',
+      emailRequired:
+        '📧 Email address required for YooKassa payment\n\n' +
+        'Please enter your email address:',
+      invalidEmail: '❌ Invalid email address. Please enter a valid email.',
+      paymentCreated:
+        '✅ Payment created!\n\n' +
+        '✨ Amount: {amount} ⭐\n' +
+        '💰 Price: {price}\n\n' +
+        'Click the button below to proceed to payment:',
+      paymentSuccess:
+        '✅ Payment received successfully!\n\n' +
+        '✨ Amount: {amount} ⭐\n' +
+        '💰 Price: {price}\n\n' +
+        '⏳ Claiming stars in progress...\n\n' +
+        'Please wait from 1 minute to 5 minutes.',
       purchaseProcessing:
         '⏳ Purchase and sending stars in progress...\n\n' +
         'Please wait from 1 minute to 5 minutes (in rare cases).\n\n' +

@@ -4,11 +4,11 @@ import { FragmentApiClientService } from '@modules/fragment/services/fragment-ap
 import { ProxyManagerService } from '@modules/fragment/services/proxy-manager.service';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import {
-  buildPaymentCallback,
-  CallbackData,
+  CallbackData
 } from '@modules/gateway/constants/callback-data.constants';
 import { BotCommandHandler } from '@modules/gateway/handlers/bot-command.handler';
 import { CallbackQueryHandler } from '@modules/gateway/handlers/callback-query.handler';
+import { MessageHandler } from '@modules/gateway/handlers/message.handler';
 import { MessageManagementService } from '@modules/gateway/services/message-management.service';
 import { TelegramBotModule } from '@modules/gateway/telegram-bot.module';
 import { TelegramBotService } from '@modules/gateway/telegram-bot.service';
@@ -23,6 +23,7 @@ import { TonConfig } from '@modules/ton/ton.config';
 import { UserEntity } from '@modules/user/entities/user.entity';
 import { UserModule } from '@modules/user/user.module';
 import { UserService } from '@modules/user/user.service';
+import { YooKassaService } from '@modules/yookassa/services/yookassa.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { Telegraf } from 'telegraf';
@@ -62,8 +63,10 @@ describe('Telegram Bot Flow E2E', () => {
   let module: TestingModule;
   let botCommandHandler: BotCommandHandler;
   let callbackQueryHandler: CallbackQueryHandler;
+  let messageHandler: MessageHandler;
   let messageManagementService: MessageManagementService;
   let starsPurchaseService: StarsPurchaseService;
+  let yooKassaService: YooKassaService;
   let userService: UserService;
   let entityManager: EntityManager;
 
@@ -322,6 +325,19 @@ describe('Telegram Bot Flow E2E', () => {
           txHash: 'test_tx_hash_012',
         }),
       })
+      .overrideProvider(YooKassaService)
+      .useValue({
+        createPayment: jest.fn().mockResolvedValue({
+          success: true,
+          paymentId: 'test_payment_id',
+          confirmationUrl:
+            'https://yoomoney.ru/checkout/payments/v2/contract?orderId=test',
+        }),
+        getPaymentByYooKassaId: jest.fn().mockResolvedValue(null),
+        linkPaymentToPurchase: jest.fn().mockResolvedValue(undefined),
+        updatePaymentStatus: jest.fn().mockResolvedValue(undefined),
+        handleWebhook: jest.fn().mockResolvedValue(undefined),
+      })
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -340,11 +356,13 @@ describe('Telegram Bot Flow E2E', () => {
     botCommandHandler = module.get<BotCommandHandler>(BotCommandHandler);
     callbackQueryHandler =
       module.get<CallbackQueryHandler>(CallbackQueryHandler);
+    messageHandler = module.get<MessageHandler>(MessageHandler);
     messageManagementService = module.get<MessageManagementService>(
       MessageManagementService,
     );
     starsPurchaseService =
       module.get<StarsPurchaseService>(StarsPurchaseService);
+    yooKassaService = module.get<YooKassaService>(YooKassaService);
     userService = module.get<UserService>(UserService);
     entityManager = testContext.dataSource.manager;
   });
@@ -359,7 +377,7 @@ describe('Telegram Bot Flow E2E', () => {
     // Create test users in database
     const userRepo = entityManager.getRepository(UserEntity);
 
-    // Whitelisted user with 0 claims
+    // Whitelisted user with 0 claims and email
     let testUser = await userRepo.findOneBy({ userId: TEST_USER_ID });
     if (!testUser) {
       testUser = new UserEntity({
@@ -367,15 +385,17 @@ describe('Telegram Bot Flow E2E', () => {
         inWhiteList: true,
         testClaims: 0,
         language: 'ru', // Set Russian language for tests
+        email: 'test@example.com', // Add email for payment flow
       });
     } else {
       testUser.inWhiteList = true;
       testUser.testClaims = 0;
       testUser.language = 'ru'; // Set Russian language for tests
+      testUser.email = 'test@example.com'; // Add email for payment flow
     }
     await userRepo.save(testUser);
 
-    // Not whitelisted user
+    // Not whitelisted user (no email, should fail at whitelist check)
     let notWhitelistedUser = await userRepo.findOneBy({
       userId: TEST_USER_ID_NOT_WHITELISTED,
     });
@@ -385,15 +405,17 @@ describe('Telegram Bot Flow E2E', () => {
         inWhiteList: false,
         testClaims: 0,
         language: 'ru', // Set Russian language for tests
+        email: undefined, // No email - should fail at whitelist check before email check
       });
     } else {
       notWhitelistedUser.inWhiteList = false;
       notWhitelistedUser.testClaims = 0;
       notWhitelistedUser.language = 'ru'; // Set Russian language for tests
+      notWhitelistedUser.email = undefined; // Ensure no email
     }
     await userRepo.save(notWhitelistedUser);
 
-    // Already claimed user
+    // Already claimed user (has email, but should fail at claim check)
     let alreadyClaimedUser = await userRepo.findOneBy({
       userId: TEST_USER_ID_ALREADY_CLAIMED,
     });
@@ -403,11 +425,13 @@ describe('Telegram Bot Flow E2E', () => {
         inWhiteList: true,
         testClaims: 1, // Already claimed
         language: 'ru', // Set Russian language for tests
+        email: 'claimed@example.com', // Has email but should fail at claim check
       });
     } else {
       alreadyClaimedUser.inWhiteList = true;
       alreadyClaimedUser.testClaims = 1;
       alreadyClaimedUser.language = 'ru'; // Set Russian language for tests
+      alreadyClaimedUser.email = 'claimed@example.com'; // Has email but should fail at claim check
     }
     await userRepo.save(alreadyClaimedUser);
 
@@ -470,16 +494,18 @@ describe('Telegram Bot Flow E2E', () => {
         starsPurchaseService.checkUsdtBalanceForPurchase,
       ).toHaveBeenCalledWith(50);
 
-      // Step 4: Click "confirm_payment_50"
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
+      // Step 4: Payment should be created automatically (user has email)
+      // Check that YooKassa payment creation was attempted
+      expect(yooKassaService.createPayment).toHaveBeenCalled();
+      const editCalls = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const paymentCall = editCalls.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('Платеж создан') ||
+            call[3].includes('Перейти к оплате')),
       );
-      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
-      expect(starsPurchaseService.purchaseTestStars).toHaveBeenCalledWith(
-        TEST_USER_ID,
-        TEST_USERNAME,
-      );
+      expect(paymentCall).toBeDefined();
+      // Note: purchaseTestStars will be called later via webhook after payment succeeds
     });
 
     it('should show payment button when balance is sufficient', async () => {
@@ -507,9 +533,16 @@ describe('Telegram Bot Flow E2E', () => {
         starsPurchaseService.checkUsdtBalanceForPurchase,
       ).toHaveBeenCalledWith(50);
       expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      // Payment should be created automatically via YooKassa
+      expect(yooKassaService.createPayment).toHaveBeenCalled();
       const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      // Now payment is created automatically, check for payment creation message
       const paymentCall = callArgs.find(
-        (call) => call[3] && call[3].includes('Оплата'),
+        (call) =>
+          call[3] &&
+          (call[3].includes('Платеж создан') ||
+            call[3].includes('Перейти к оплате') ||
+            call[3].includes('Создаю платеж')),
       );
       expect(paymentCall).toBeDefined();
     });
@@ -596,15 +629,19 @@ describe('Telegram Bot Flow E2E', () => {
         'Initial message',
       );
 
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
-      );
+      // Try to select amount - should show whitelist error
+      await callbackQueryHandler.handleCallbackQuery(ctx, 'amount_50_test');
 
       expect(ctx.telegram.editMessageText).toHaveBeenCalled();
-      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock
-        .calls[0];
-      expect(callArgs[3]).toContain('whitelist');
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const errorCall = callArgs.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('whitelist') ||
+            call[3].includes('Доступ ограничен') ||
+            call[3].includes('доступно только для пользователей')),
+      );
+      expect(errorCall).toBeDefined();
       expect(starsPurchaseService.purchaseTestStars).not.toHaveBeenCalled();
     });
 
@@ -618,15 +655,17 @@ describe('Telegram Bot Flow E2E', () => {
         'Initial message',
       );
 
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
-      );
+      // Try to select amount - should show already claimed error
+      await callbackQueryHandler.handleCallbackQuery(ctx, 'amount_50_test');
 
       expect(ctx.telegram.editMessageText).toHaveBeenCalled();
       const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
       const errorCall = callArgs.find(
-        (call) => call[3] && call[3].includes('уже получены'),
+        (call) =>
+          call[3] &&
+          (call[3].includes('уже получены') ||
+            call[3].includes('уже получили') ||
+            call[3].includes('Тестовые звезды уже')),
       );
       expect(errorCall).toBeDefined();
       expect(starsPurchaseService.purchaseTestStars).not.toHaveBeenCalled();
@@ -695,32 +734,29 @@ describe('Telegram Bot Flow E2E', () => {
         sufficient: true,
       });
 
-      // Mock successful purchase
-      (
-        starsPurchaseService.purchaseTestStars as jest.Mock
-      ).mockResolvedValueOnce({
+      // Mock successful YooKassa payment creation
+      (yooKassaService.createPayment as jest.Mock).mockResolvedValueOnce({
         success: true,
-        requestId: 'test_request_id',
+        paymentId: 'test_payment_id',
+        confirmationUrl:
+          'https://yoomoney.ru/checkout/payments/v2/contract?orderId=test',
       });
 
       await callbackQueryHandler.handleCallbackQuery(ctx, 'amount_50_test');
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
-      );
 
-      // Should show processing message
+      // Should show payment creation message
       const editCalls = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
-      const processingCall = editCalls.find(
-        (call) => call[3] && call[3].includes('Идет покупка'),
+      const paymentCall = editCalls.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('Платеж создан') ||
+            call[3].includes('Создаю платеж') ||
+            call[3].includes('Перейти к оплате')),
       );
-      expect(processingCall).toBeDefined();
+      expect(paymentCall).toBeDefined();
 
-      // Should show success message
-      const successCall = editCalls.find((call) =>
-        call[3].includes('Спасибо за тестирование'),
-      );
-      expect(successCall).toBeDefined();
+      // Should call YooKassa service to create payment
+      expect(yooKassaService.createPayment).toHaveBeenCalled();
     });
 
     it('should handle purchase error', async () => {
@@ -740,19 +776,13 @@ describe('Telegram Bot Flow E2E', () => {
         sufficient: true,
       });
 
-      // Mock failed purchase
-      (
-        starsPurchaseService.purchaseTestStars as jest.Mock
-      ).mockResolvedValueOnce({
+      // Mock failed YooKassa payment creation
+      (yooKassaService.createPayment as jest.Mock).mockResolvedValueOnce({
         success: false,
         error: 'Test error',
       });
 
       await callbackQueryHandler.handleCallbackQuery(ctx, 'amount_50_test');
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
-      );
 
       const editCalls = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
       const errorCall = editCalls.find(
@@ -778,25 +808,26 @@ describe('Telegram Bot Flow E2E', () => {
         sufficient: true,
       });
 
-      // Mock QUEUE_BUSY error
-      (
-        starsPurchaseService.purchaseTestStars as jest.Mock
-      ).mockResolvedValueOnce({
-        success: false,
-        error: 'QUEUE_BUSY',
+      // Mock successful YooKassa payment creation
+      // QUEUE_BUSY error will occur later during webhook processing
+      (yooKassaService.createPayment as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        paymentId: 'test_payment_id',
+        confirmationUrl:
+          'https://yoomoney.ru/checkout/payments/v2/contract?orderId=test',
       });
 
       await callbackQueryHandler.handleCallbackQuery(ctx, 'amount_50_test');
-      await callbackQueryHandler.handleCallbackQuery(
-        ctx,
-        buildPaymentCallback(50),
-      );
 
+      // Payment should be created successfully
+      expect(yooKassaService.createPayment).toHaveBeenCalled();
       const editCalls = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
-      const busyCall = editCalls.find(
-        (call) => call[3] && call[3].includes('Очередь занята'),
+      const paymentCall = editCalls.find(
+        (call) => call[3] && call[3].includes('Платеж создан'),
       );
-      expect(busyCall).toBeDefined();
+      expect(paymentCall).toBeDefined();
+      // Note: QUEUE_BUSY error would be shown later during webhook processing,
+      // not during payment creation
     });
   });
 });

@@ -13,7 +13,7 @@ export class UserService implements OnModuleInit {
   constructor(
     @InjectEntityManager()
     private readonly db: EntityManager,
-  ) {}
+  ) { }
 
   async onModuleInit(): Promise<void> {
     await this.loadAllUsers();
@@ -75,13 +75,19 @@ export class UserService implements OnModuleInit {
     const shouldUpdateUsername =
       metadataToUpdate.username !== undefined &&
       user.username !== metadataToUpdate.username;
+    const shouldUpdateEmail =
+      metadataToUpdate.email !== undefined &&
+      user.email !== metadataToUpdate.email;
 
-    if (!shouldUpdateLanguage && !shouldUpdateUsername) return;
+    if (!shouldUpdateLanguage && !shouldUpdateUsername && !shouldUpdateEmail)
+      return;
 
     // eslint-disable-next-line no-param-reassign
     if (shouldUpdateLanguage) user.language = metadataToUpdate.language;
     // eslint-disable-next-line no-param-reassign
     if (shouldUpdateUsername) user.username = metadataToUpdate.username;
+    // eslint-disable-next-line no-param-reassign
+    if (shouldUpdateEmail) user.email = metadataToUpdate.email;
 
     await em.save(user);
     this.userCache.set(user.userId, user);

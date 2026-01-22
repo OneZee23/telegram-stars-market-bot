@@ -30,13 +30,13 @@ export class BotCommandHandler {
     const t = getTranslations(userContext.language);
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
       [
         {
           text: t.mainMenu.buyStars,
           callback_data: CallbackData.BUY_STARS,
         },
       ],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
     ]);
 
     await this.messageManagementService.sendMessage(
