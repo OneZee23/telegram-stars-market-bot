@@ -1,6 +1,7 @@
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
+import { YooKassaService } from '@modules/yookassa/services/yookassa.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Context } from 'telegraf';
 import { PricingConfig } from '../config/pricing.config';
@@ -36,6 +37,7 @@ export class CallbackQueryHandler {
     private readonly userStateService: UserStateService,
     private readonly whitelistService: WhitelistService,
     private readonly starsPurchaseService: StarsPurchaseService,
+    private readonly yooKassaService: YooKassaService,
     private readonly userService: UserService,
     private readonly pricingConfig: PricingConfig,
   ) {}
@@ -430,7 +432,18 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show processing message with timeout info
+    // Get pricing for this amount
+    const pricing = getAmountPricing(amount, this.pricingConfig);
+    if (!pricing) {
+      const errorText = t.buyStars.purchaseError.replace(
+        '{error}',
+        'Invalid amount',
+      );
+      await this.messageManagementService.editMessage(ctx, userId, errorText);
+      return;
+    }
+
+    // Show processing message
     const processingText = t.buyStars.purchaseProcessing;
     await this.messageManagementService.editMessage(
       ctx,
@@ -438,33 +451,60 @@ export class CallbackQueryHandler {
       processingText,
     );
 
-    // Purchase stars
+    // Create payment in YooKassa (both test and regular purchases go through YooKassa)
+    const isTestPurchase = isTestClaimAmount(amount, this.pricingConfig);
+
     this.logger.log(
-      `User ${userId} (@${username}) confirmed payment for ${amount} stars`,
+      `User ${userId} (@${username}) creating ${isTestPurchase ? 'test' : 'regular'} payment for ${amount} stars, ${pricing.priceRub} RUB`,
     );
 
-    const result = isTestClaimAmount(amount, this.pricingConfig)
-      ? await this.starsPurchaseService.purchaseTestStars(userId, username)
-      : await this.starsPurchaseService.purchaseStars(userId, username, amount);
+    // Create YooKassa payment (test mode will be handled by YooKassa config)
+    const paymentResult = await this.yooKassaService.createPayment({
+      userId,
+      recipientUsername: username,
+      starsAmount: amount,
+      priceRub: pricing.priceRub,
+      returnUrl: 'https://t.me/onezee_co',
+      isTestPurchase,
+    });
 
-    if (!result.success) {
-      const errorText =
-        result.error === 'QUEUE_BUSY'
-          ? t.buyStars.queueBusy
-          : t.buyStars.purchaseError.replace(
-              '{error}',
-              result.error || 'Unknown error',
-            );
+    if (!paymentResult.success || !paymentResult.confirmationUrl) {
+      const errorText = t.buyStars.purchaseError.replace(
+        '{error}',
+        paymentResult.error || 'Failed to create payment',
+      );
       await this.messageManagementService.editMessage(ctx, userId, errorText);
       return;
     }
 
-    // Success message with instructions
-    const successText = t.buyStars.testPurchaseSuccess
-      .replace('{channel}', 'https://t.me/onezee_co')
-      .replace('{post}', 'https://t.me/onezee_co/49');
+    // Send payment link to user
+    const paymentText =
+      `💳 Оплата через ЮKassa\n\n` +
+      `✨ Количество: ${amount} ⭐\n` +
+      `💰 Сумма: ${formatPriceForButton(pricing.priceRub)}\n\n` +
+      `Нажмите кнопку ниже для перехода к оплате:`;
 
-    await this.messageManagementService.editMessage(ctx, userId, successText);
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [
+        {
+          text: '💳 Оплатить',
+          url: paymentResult.confirmationUrl,
+        },
+      ],
+      [
+        {
+          text: t.mainMenu.back,
+          callback_data: CallbackData.BUY_FOR_MYSELF,
+        },
+      ],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      paymentText,
+      keyboard,
+    );
   }
 
   private async handleCustomAmount(

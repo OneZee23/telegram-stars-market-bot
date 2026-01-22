@@ -4,6 +4,7 @@ import { FragmentModule } from '@modules/fragment/fragment.module';
 import { TelegramBotModule } from '@modules/gateway/telegram-bot.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { UserModule } from '@modules/user/user.module';
+import { YooKassaModule } from '@modules/yookassa/yookassa.module';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -19,6 +20,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     UserModule,
     FragmentModule,
     NotificationsModule,
+    YooKassaModule,
   ],
 })
 export class AppModule {}
