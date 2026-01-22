@@ -85,6 +85,13 @@ export class YooKassaService {
         },
       };
 
+      this.logger.debug('Sending payment request to YooKassa', {
+        shopId: this.config.shopId,
+        amount: paymentData.amount,
+        description: paymentData.description,
+        metadata: paymentData.metadata,
+      });
+
       // Create payment in YooKassa
       const yooKassaPayment = await this.checkout.createPayment(paymentData);
 
@@ -106,15 +113,27 @@ export class YooKassaService {
         confirmationUrl: payment.confirmationUrl,
       };
     } catch (error) {
+      let errorMessage: string;
+      let errorDetails: string | undefined;
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        errorDetails = error.stack;
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
+        errorDetails = JSON.stringify(error, null, 2);
+      } else {
+        errorMessage = String(error);
+      }
+
       this.logger.error(
-        `Failed to create YooKassa payment: ${error instanceof Error ? error.message : String(error)}`,
-        error instanceof Error ? error.stack : undefined,
+        `Failed to create YooKassa payment for user ${params.userId}, ${params.starsAmount} stars, ${params.priceRub} RUB: ${errorMessage}`,
+        errorDetails,
       );
 
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : 'Unknown error occurred',
+        error: errorMessage,
       };
     }
   }
@@ -201,9 +220,22 @@ export class YooKassaService {
         );
       }
     } catch (error) {
+      let errorMessage: string;
+      let errorDetails: string | undefined;
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        errorDetails = error.stack;
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
+        errorDetails = JSON.stringify(error, null, 2);
+      } else {
+        errorMessage = String(error);
+      }
+
       this.logger.error(
-        `Error handling YooKassa webhook: ${error instanceof Error ? error.message : String(error)}`,
-        error instanceof Error ? error.stack : undefined,
+        `Error handling YooKassa webhook: ${errorMessage}`,
+        errorDetails,
       );
       throw error;
     }
