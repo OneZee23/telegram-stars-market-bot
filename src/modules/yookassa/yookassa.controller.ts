@@ -23,7 +23,7 @@ export class YooKassaController {
     private readonly starsPurchaseService: StarsPurchaseService,
     @InjectEntityManager()
     private readonly em: EntityManager,
-  ) { }
+  ) {}
 
   /**
    * Webhook endpoint for YooKassa payment notifications
@@ -170,16 +170,16 @@ export class YooKassaController {
 
     const purchaseResult = payment.isTestPurchase
       ? await this.starsPurchaseService.purchaseTestStars(
-        payment.userId,
-        payment.recipientUsername,
-      )
+          payment.userId,
+          payment.recipientUsername,
+        )
       : await this.starsPurchaseService.purchaseStars(
-        payment.userId,
-        payment.recipientUsername,
-        payment.starsAmount,
-        0,
-        false,
-      );
+          payment.userId,
+          payment.recipientUsername,
+          payment.starsAmount,
+          0,
+          false,
+        );
 
     this.logger.debug('Purchase result', {
       success: purchaseResult.success,
