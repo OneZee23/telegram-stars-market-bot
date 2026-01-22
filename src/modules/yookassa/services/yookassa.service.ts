@@ -76,6 +76,22 @@ export class YooKassaService {
         },
         capture: true, // Auto-capture payment
         description: `Покупка ${params.starsAmount} Telegram Stars`,
+        receipt: {
+          customer: {
+            email: 'noreply@onezee.ru', // Required for receipt, using default email
+          },
+          items: [
+            {
+              description: `Telegram Stars (${params.starsAmount} шт)`,
+              quantity: '1',
+              amount: {
+                value: params.priceRub.toFixed(2),
+                currency: 'RUB',
+              },
+              vat_code: 1, // НДС 20% (код 1 в YooKassa)
+            },
+          ],
+        },
         metadata: {
           userId: params.userId,
           recipientUsername: params.recipientUsername,
@@ -180,6 +196,8 @@ export class YooKassaService {
       } else {
         userErrorMessage = String(error);
       }
+
+      // TODO: убрать if else и добавить для каждого пользователя запрос email адреса, с сохранением в базу данных
 
       // Log full error details for debugging
       this.logger.error(
