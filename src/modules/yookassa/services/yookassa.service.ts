@@ -112,28 +112,84 @@ export class YooKassaService {
         paymentId: payment.id,
         confirmationUrl: payment.confirmationUrl,
       };
-    } catch (error) {
-      let errorMessage: string;
+    } catch (error: unknown) {
+      // Extract user-friendly error message
+      let userErrorMessage: string =
+        'Не удалось создать платеж. Попробуйте позже.';
       let errorDetails: string | undefined;
 
-      if (error instanceof Error) {
-        errorMessage = error.message;
+      // Handle axios errors (check if error has response property)
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response: unknown }).response === 'object' &&
+        (
+          error as {
+            response: { data?: unknown; status?: number; statusText?: string };
+          }
+        ).response !== null
+      ) {
+        const axiosError = error as {
+          response: {
+            data?: unknown;
+            status?: number;
+            statusText?: string;
+          };
+          config?: { url?: string; method?: string };
+        };
+        const responseData = axiosError.response.data;
+
+        if (typeof responseData === 'object' && responseData !== null) {
+          const data = responseData as {
+            description?: string;
+            message?: string;
+            type?: string;
+          };
+          // Try to extract description or message from YooKassa error
+          userErrorMessage =
+            data.description ||
+            data.message ||
+            `Ошибка YooKassa: ${data.type || 'Unknown error'}`;
+        } else if (typeof responseData === 'string') {
+          userErrorMessage = responseData;
+        }
+
+        errorDetails = JSON.stringify(
+          {
+            status: axiosError.response.status,
+            statusText: axiosError.response.statusText,
+            data: responseData,
+            config: {
+              url: axiosError.config?.url,
+              method: axiosError.config?.method,
+            },
+          },
+          null,
+          2,
+        );
+      } else if (error instanceof Error) {
+        userErrorMessage = error.message;
         errorDetails = error.stack;
       } else if (typeof error === 'object' && error !== null) {
-        errorMessage = JSON.stringify(error);
         errorDetails = JSON.stringify(error, null, 2);
+        // Try to extract message from error object
+        if ('message' in error && typeof error.message === 'string') {
+          userErrorMessage = error.message;
+        }
       } else {
-        errorMessage = String(error);
+        userErrorMessage = String(error);
       }
 
+      // Log full error details for debugging
       this.logger.error(
-        `Failed to create YooKassa payment for user ${params.userId}, ${params.starsAmount} stars, ${params.priceRub} RUB: ${errorMessage}`,
+        `Failed to create YooKassa payment for user ${params.userId}, ${params.starsAmount} stars, ${params.priceRub} RUB`,
         errorDetails,
       );
 
       return {
         success: false,
-        error: errorMessage,
+        error: userErrorMessage,
       };
     }
   }
