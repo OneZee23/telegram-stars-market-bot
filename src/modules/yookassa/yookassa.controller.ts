@@ -1,5 +1,9 @@
 import { StarsPurchaseEntity } from '@modules/fragment/entities/stars-purchase.entity';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
+import { getTranslations } from '@modules/gateway/i18n/translations';
+import { MessageManagementService } from '@modules/gateway/services/message-management.service';
+import { formatPriceForButton } from '@modules/gateway/utils/price-formatter.util';
+import { UserService } from '@modules/user/user.service';
 import {
   Body,
   Controller,
@@ -9,6 +13,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
+import { Telegraf } from 'telegraf';
 import { EntityManager } from 'typeorm';
 import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { YooKassaService } from './services/yookassa.service';
@@ -23,6 +28,9 @@ export class YooKassaController {
     private readonly starsPurchaseService: StarsPurchaseService,
     @InjectEntityManager()
     private readonly em: EntityManager,
+    private readonly messageManagementService: MessageManagementService,
+    private readonly telegraf: Telegraf,
+    private readonly userService: UserService,
   ) {}
 
   /**
@@ -89,6 +97,9 @@ export class YooKassaController {
       return;
     }
 
+    // Update message to show payment success
+    await this.updatePaymentSuccessMessage(dbPayment);
+
     if (dbPayment.starsPurchaseId) {
       this.logger.debug(
         `Stars purchase already exists for payment ${dbPayment.id}`,
@@ -125,6 +136,33 @@ export class YooKassaController {
       purchaseId: purchaseEntity.id,
       requestId: purchaseResult.requestId,
     });
+  }
+
+  /**
+   * Update message to show payment success and claiming in progress
+   */
+  private async updatePaymentSuccessMessage(
+    payment: PaymentEntity,
+  ): Promise<void> {
+    try {
+      const user = await this.userService.getOrCreateUser(payment.userId);
+      const t = getTranslations(user.language);
+
+      const formattedPrice = formatPriceForButton(payment.priceRub);
+      const message = t.buyStars.paymentSuccess
+        .replace('{amount}', payment.starsAmount.toString())
+        .replace('{price}', formattedPrice);
+
+      await this.messageManagementService.editMessageByUserId(
+        this.telegraf.telegram,
+        payment.userId,
+        message,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to update payment success message for user ${payment.userId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**

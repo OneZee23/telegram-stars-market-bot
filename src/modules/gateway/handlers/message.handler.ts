@@ -6,6 +6,7 @@ import { getTranslations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
 import { UserState, UserStateService } from '../services/user-state.service';
 import { ContextExtractor } from '../utils/context-extractor.util';
+import { CallbackQueryHandler } from './callback-query.handler';
 
 @Injectable()
 export class MessageHandler {
@@ -16,6 +17,7 @@ export class MessageHandler {
     private readonly userStateService: UserStateService,
     private readonly whitelistService: WhitelistService,
     private readonly userService: UserService,
+    private readonly callbackQueryHandler: CallbackQueryHandler,
   ) {}
 
   async handleTextMessage(ctx: Context, text: string): Promise<void> {
@@ -34,6 +36,8 @@ export class MessageHandler {
 
     if (state === UserState.ENTERING_CUSTOM_AMOUNT) {
       await this.handleCustomAmountInput(ctx, userContext.userId, text, t);
+    } else if (state === UserState.ENTERING_EMAIL) {
+      await this.handleEmailInput(ctx, userContext.userId, text, t);
     }
   }
 
@@ -78,6 +82,57 @@ export class MessageHandler {
       ctx,
       userId,
       responseText,
+    );
+  }
+
+  private async handleEmailInput(
+    ctx: Context,
+    userId: string,
+    text: string,
+    t: ReturnType<typeof getTranslations>,
+  ): Promise<void> {
+    const email = text.trim().toLowerCase();
+
+    // Simple email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      const errorText = t.buyStars.invalidEmail;
+      await this.messageManagementService.sendNewMessage(
+        ctx,
+        userId,
+        errorText,
+      );
+      return;
+    }
+
+    // Get amount from state
+    const amount = this.userStateService.getAmount(userId);
+    if (!amount) {
+      const errorText = t.buyStars.purchaseError.replace(
+        '{error}',
+        'Amount not found. Please restart the purchase flow.',
+      );
+      await this.messageManagementService.sendNewMessage(
+        ctx,
+        userId,
+        errorText,
+      );
+      this.userStateService.clearState(userId);
+      return;
+    }
+
+    // Save email to user
+    await this.userService.getOrCreateUser(userId, { email });
+
+    // Clear state
+    this.userStateService.clearState(userId);
+
+    // Proceed to payment creation
+    await this.callbackQueryHandler.proceedToPaymentAfterEmail(
+      ctx,
+      userId,
+      amount,
+      email,
     );
   }
 }

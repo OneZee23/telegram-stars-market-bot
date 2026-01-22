@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Context } from 'telegraf';
+import { Context, Telegraf } from 'telegraf';
 import {
   ExtraEditMessageText,
   ExtraReplyMessage,
@@ -112,5 +112,38 @@ export class MessageManagementService {
 
   clearStoredMessage(userId: string): void {
     this.userMessages.delete(userId);
+  }
+
+  /**
+   * Edit message by userId without Context (for use in webhooks)
+   */
+  async editMessageByUserId(
+    telegram: Telegraf['telegram'],
+    userId: string,
+    text: string,
+    keyboard?: InlineKeyboard,
+  ): Promise<boolean> {
+    const storedMessage = this.userMessages.get(userId);
+    if (!storedMessage) {
+      return false;
+    }
+
+    try {
+      const options: ExtraEditMessageText = {};
+      if (keyboard) {
+        options.reply_markup = keyboard;
+      }
+
+      await telegram.editMessageText(
+        storedMessage.chatId,
+        storedMessage.messageId,
+        undefined,
+        text,
+        options,
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

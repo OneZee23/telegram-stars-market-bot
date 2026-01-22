@@ -22,6 +22,10 @@ export class UserEntity {
   @Column({ name: 'username', type: 'varchar', nullable: true })
   username?: string;
 
+  /** Email address for YooKassa receipts */
+  @Column({ name: 'email', type: 'varchar', nullable: true })
+  email?: string;
+
   @Column({ name: 'language', type: 'varchar', default: 'en' })
   language: string;
 

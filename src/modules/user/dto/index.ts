@@ -4,4 +4,7 @@ export class UserMetadata {
 
   /** Telegram username of the user. Like @test_1234567890 */
   username?: string;
+
+  /** Email address for YooKassa receipts */
+  email?: string;
 }

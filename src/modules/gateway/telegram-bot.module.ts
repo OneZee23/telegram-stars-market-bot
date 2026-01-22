@@ -7,7 +7,6 @@ import { PricingConfig } from './config/pricing.config';
 import { BotCommandHandler } from './handlers/bot-command.handler';
 import { CallbackQueryHandler } from './handlers/callback-query.handler';
 import { MessageHandler } from './handlers/message.handler';
-import { MessageManagementService } from './services/message-management.service';
 import { UserStateService } from './services/user-state.service';
 import { TelegramBotWebhookGuard } from './telegram-bot-webhook.guard';
 import { TelegramBotController } from './telegram-bot.controller';
@@ -18,7 +17,6 @@ import { TelegramBotService } from './telegram-bot.service';
   providers: [
     PricingConfig,
     TelegramBotService,
-    MessageManagementService,
     UserStateService,
     BotCommandHandler,
     CallbackQueryHandler,
@@ -30,6 +28,6 @@ import { TelegramBotService } from './telegram-bot.service';
     },
   ],
   controllers: [TelegramBotController],
-  exports: [TelegramBotService, PricingConfig],
+  exports: [TelegramBotService, PricingConfig, UserStateService],
 })
 export class TelegramBotModule {}
