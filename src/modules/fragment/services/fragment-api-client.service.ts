@@ -490,46 +490,109 @@ export class FragmentApiClientService {
       return false;
     }
 
-    try {
-      const response = await this.sendRequest<{
-        ok?: boolean;
-        error?: string;
-        [key: string]: unknown;
-      }>('/api', {
-        method: 'POST',
-        isApi: true,
-        data: { method: 'updateStarsBuyState', mode: 'new', lv: 'false' },
-      });
+    // Retry logic for network errors
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-      // Check if we got a Cloudflare challenge page
-      if (response.status === 403) {
-        const responseData = response.data as any;
-        if (
-          typeof responseData === 'string' &&
-          (responseData.includes('Just a moment') ||
-            responseData.includes('cf-browser-verification'))
-        ) {
-          this.logger.error(
-            'Cookies validity check failed: Cloudflare is blocking API requests. Please update FRAGMENT_COOKIES with fresh cookies.',
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        if (attempt > 0) {
+          this.logger.debug(
+            `Retrying cookies validity check (attempt ${attempt + 1}/${maxRetries + 1})...`,
+          );
+          // Wait a bit before retry
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise<void>((resolve) => {
+            setTimeout(() => resolve(), 1000 * attempt);
+          });
+        }
+
+        // eslint-disable-next-line no-await-in-loop
+        const response = await this.sendRequest<{
+          ok?: boolean;
+          error?: string;
+          [key: string]: unknown;
+        }>('/api', {
+          method: 'POST',
+          isApi: true,
+          data: { method: 'updateStarsBuyState', mode: 'new', lv: 'false' },
+        });
+
+        // Check if we got a Cloudflare challenge page
+        if (response.status === 403) {
+          const responseData = response.data as any;
+          if (
+            typeof responseData === 'string' &&
+            (responseData.includes('Just a moment') ||
+              responseData.includes('cf-browser-verification'))
+          ) {
+            this.logger.error(
+              'Cookies validity check failed: Cloudflare is blocking API requests. Please update FRAGMENT_COOKIES with fresh cookies.',
+            );
+            return false;
+          }
+        }
+
+        const isValid = response.status === 200 && !response.data.error;
+        if (!isValid) {
+          this.logger.warn(
+            `Cookies validity check failed: status ${response.status}, error: ${response.data.error || 'unknown error'}`,
+          );
+        }
+        return isValid;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const errorMessage = lastError.message;
+        const sanitizedError = sanitizeLogMessage(errorMessage);
+
+        // Check if it's a network error (not a cookies validity issue)
+        const isNetworkError =
+          errorMessage.includes('fetch failed') ||
+          errorMessage.includes('ECONNREFUSED') ||
+          errorMessage.includes('ETIMEDOUT') ||
+          errorMessage.includes('ENOTFOUND') ||
+          errorMessage.includes('ECONNRESET') ||
+          errorMessage.includes('socket hang up') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('All proxies failed');
+
+        if (isNetworkError) {
+          // Network errors don't mean cookies are invalid
+          // Retry if we haven't exhausted retries
+          if (attempt < maxRetries) {
+            this.logger.debug(
+              `Cookies validity check network error (attempt ${attempt + 1}), retrying...: ${sanitizedError}`,
+            );
+            // Continue to next iteration (retry)
+            // eslint-disable-next-line no-continue
+            continue;
+          } else {
+            // After all retries, assume cookies are valid but network has issues
+            this.logger.warn(
+              `Cookies validity check network error after ${maxRetries + 1} attempts (not a cookies issue): ${sanitizedError}. Assuming cookies are valid but network/proxy has persistent issues.`,
+            );
+            // Return true to allow purchase to proceed - it will fail with a clearer error if network issues persist
+            return true;
+          }
+        } else {
+          // For other errors (like API errors), cookies might be invalid
+          // Don't retry these
+          this.logger.warn(
+            `Cookies validity check exception (possible cookies issue): ${sanitizedError}`,
           );
           return false;
         }
       }
-
-      const isValid = response.status === 200 && !response.data.error;
-      if (!isValid) {
-        this.logger.warn(
-          `Cookies validity check failed: status ${response.status}, error: ${response.data.error || 'unknown error'}`,
-        );
-      }
-      return isValid;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const sanitizedError = sanitizeLogMessage(errorMessage);
-      this.logger.warn(`Cookies validity check exception: ${sanitizedError}`);
-      return false;
     }
+
+    // Should not reach here, but just in case
+    if (lastError) {
+      const sanitizedError = sanitizeLogMessage(lastError.message);
+      this.logger.warn(
+        `Cookies validity check failed after all retries: ${sanitizedError}`,
+      );
+    }
+    return false;
   }
 
   /**
