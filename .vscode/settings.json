@@ -1,16 +1,41 @@
 {
   "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "vscode.typescript-language-features",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
   },
   "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "vscode.typescript-language-features",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
   },
+  "typescript.format.enable": true,
+  "typescript.format.tabSize": 2,
+  "typescript.format.insertSpaceAfterCommaDelimiter": true,
+  "typescript.format.insertSpaceAfterSemicolonInForStatements": true,
+  "typescript.format.insertSpaceBeforeAndAfterBinaryOperators": true,
+  "typescript.format.insertSpaceAfterKeywordsInControlFlowStatements": true,
+  "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": true,
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "typescript.format.placeOpenBraceOnNewLineForFunctions": false,
+  "typescript.format.placeOpenBraceOnNewLineForControlBlocks": false,
+  "javascript.format.enable": true,
+  "javascript.format.tabSize": 2,
+  "javascript.format.insertSpaceAfterCommaDelimiter": true,
+  "javascript.format.insertSpaceAfterSemicolonInForStatements": true,
+  "javascript.format.insertSpaceBeforeAndAfterBinaryOperators": true,
+  "javascript.format.insertSpaceAfterKeywordsInControlFlowStatements": true,
+  "javascript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": true,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "javascript.format.placeOpenBraceOnNewLineForFunctions": false,
+  "javascript.format.placeOpenBraceOnNewLineForControlBlocks": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit",
     "source.organizeImports": "always"
   },
   "editor.formatOnSave": true,
-  
   // Jest configuration
   "jest.coverageColors": {
     "uncovered": "rgba(255,99,71,0.2)",
@@ -19,7 +44,6 @@
   },
   "jest.jestCommandLine": "node --require ts-node/register --require tsconfig-paths/register node_modules/.bin/jest --config .vscode/jest.e2e.config.js",
   "jest.runMode": "on-demand",
-  
   // Test Explorer configuration
   "testExplorer.showCollapseButton": true,
   "testExplorer.showExpandButton": 1,
@@ -28,7 +52,6 @@
   "testExplorer.mergeSuites": true,
   "testExplorer.hideEmptyLog": true,
   "testExplorer.useNativeTesting": true,
-  
   // Test Lens
   "testing.gutterEnabled": true,
   "testing.automaticallyOpenPeekView": "failureAnywhere",
