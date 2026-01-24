@@ -1,0 +1,131 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+      cleanup:
+        description: 'Run cleanup'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  WERF_SECRET_KEY: ${{ secrets.WERF_SECRET_KEY }}
+  WERF_REPO: ghcr.io/${{ github.repository_owner }}/telegram-stars-market-bot
+
+jobs:
+  # Stage: Build
+  build:
+    name: Build the app
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install werf
+        uses: werf/actions/install@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build images
+        run: werf build --repo $WERF_REPO
+
+  # Stage: Deploy to Production
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+    environment:
+      name: prod
+      url: https://stars.onezee.ru
+    permissions:
+      contents: read
+      packages: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install werf
+        uses: werf/actions/install@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy to Kubernetes
+        run: |
+          werf converge \
+            --repo $WERF_REPO \
+            --env prod \
+            --release telegram-stars-market-bot \
+            --namespace telegram-stars-market \
+            --require-built-images
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/telegram-stars-market-bot \
+            -n telegram-stars-market \
+            --timeout=5m
+
+  # Stage: Cleanup (manual)
+  cleanup:
+    name: Perform cleanup
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.cleanup == true
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install werf
+        uses: werf/actions/install@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run cleanup
+        run: |
+          werf cleanup --repo $WERF_REPO

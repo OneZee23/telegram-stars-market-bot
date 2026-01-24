@@ -1,0 +1,13 @@
+# Generated secret for pulling Docker images from private registry
+#
+# https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# https://kubernetes.io/docs/concepts/configuration/secret/
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-docker-config
+  namespace: {{ .Release.Namespace }}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: {{ werf_secret_file "secret/dockerconfig" | b64enc }}
+

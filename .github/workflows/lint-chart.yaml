@@ -1,0 +1,35 @@
+name: Lint Helm Chart
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.helm/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.helm/**'
+
+env:
+  WERF_SECRET_KEY: ${{ secrets.WERF_SECRET_KEY }}
+
+jobs:
+  lint-chart:
+    name: Lint Helm Chart
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install werf
+        uses: werf/actions/install@v2
+
+      - name: Lint chart with prod values
+        run: |
+          werf helm lint .helm \
+            --values=.helm/values-prod.yaml \
+            --secret-values=.helm/secret-values-prod.yaml
+
