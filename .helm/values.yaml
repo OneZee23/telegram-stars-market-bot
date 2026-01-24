@@ -1,0 +1,80 @@
+# Default values for telegram-stars-market-bot
+# This is a YAML-formatted file.
+
+# Application container configuration
+app:
+  # Application port (must match NestJS port)
+  port: 3000
+
+# Public environment variables
+# These are non-sensitive and can be in git
+publicConfig:
+  # Basic settings
+  AVAILABLE_STAR_AMOUNTS: "50"
+  
+  # Pricing (non-sensitive defaults)
+  USD_RUB_RATE: "98"
+  PRICE_50_STARS_USD: "0.75"
+  USDT_RESERVE_MULTIPLIER: "1.133"
+  ACQUIRER_FEE_PERCENT: "3"
+  
+  # DEX settings
+  DEX_PROVIDER: "stonfi"
+  USDT_JETTON_ADDRESS: "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+  SWAP_SLIPPAGE_TOLERANCE: "1"
+  SWAP_RESERVE_PERCENT: "5"
+  MIN_TON_FOR_FEES: "100000000"
+  
+  # TonCenter
+  TONCENTER_RPC_URL: "https://toncenter.com/api/v2/jsonRPC"
+
+# Application replication
+replication:
+  minReplicas: 1
+  maxReplicas: 3
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Health check probes
+probes:
+  startup:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+# Service configuration
+service:
+  port: 80
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: stars.onezee.ru
+  paths:
+    - /telegram/webhook
+    - /yookassa/webhook
+  tls:
+    enabled: true
+  annotations: {}
+

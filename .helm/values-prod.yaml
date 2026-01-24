@@ -1,0 +1,25 @@
+# Production environment values
+# Override values.yaml for production
+
+replication:
+  minReplicas: 1
+  maxReplicas: 1
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 768Mi
+
+# Production-specific public config
+publicConfig:
+  USD_RUB_RATE: "78"
+  AVAILABLE_STAR_AMOUNTS: "50"
+
+ingress:
+  host: stars.onezee.ru
+  tls:
+    enabled: true
+

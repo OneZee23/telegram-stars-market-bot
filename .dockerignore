@@ -1,18 +1,58 @@
-.git/
-.helm/
-.husky/
-.vscode/
-dist/
+# Dependencies
 node_modules/
-.editorconfig
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+coverage/
+.nyc_output/
+test/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Development
 .env
-.env.example
-.eslintrc.js
-.gitattributes
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.log
+
+# Git
+.git/
 .gitignore
-.gitlab-ci.yml
-.prettierrc
-.npmrc
-.test.env
-docker-compose.yml
+.gitattributes
+
+# Documentation
+docs/
+local_docs/
 README.md
+*.md
+!package.json
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Kubernetes & Helm
+.helm/
+.helm_example/
+werf.yaml
+*.kubeconfig
+
+# Misc
+.DS_Store
+Thumbs.db
+screenshots/
+tmp/
+temp/
