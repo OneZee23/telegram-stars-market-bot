@@ -45,19 +45,19 @@ resources:
 # Health check probes
 probes:
   startup:
-    path: /
+    path: /health/check
     initialDelaySeconds: 5
     periodSeconds: 2
     timeoutSeconds: 2
     failureThreshold: 30
   liveness:
-    path: /
+    path: /health/check
     initialDelaySeconds: 10
     periodSeconds: 10
     timeoutSeconds: 2
     failureThreshold: 3
   readiness:
-    path: /
+    path: /health/check
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 2
