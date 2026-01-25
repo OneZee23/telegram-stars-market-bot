@@ -1,0 +1,296 @@
+# Kubernetes Deployment Structure for Timeweb
+
+## Required Files Structure
+
+```
+.
+├── Dockerfile                          # Multi-stage build
+├── werf.yaml                          # Werf configuration
+├── .werf_secret_key                  # Secret key (gitignored)
+├── .dockerignore                      # Docker ignore rules
+├── .github/
+│   └── workflows/
+│       └── deploy.yaml               # CI/CD pipeline
+├── .helm/
+│   ├── Chart.yaml                    # Helm chart metadata
+│   ├── values.yaml                   # Default values (public)
+│   ├── values-prod.yaml              # Production overrides
+│   ├── secret-values-prod.yaml       # Encrypted secrets (SAFE to commit)
+│   ├── .helmignore                   # Helm ignore rules
+│   ├── secret/
+│   │   └── dockerconfig              # Encrypted Docker registry credentials
+│   └── templates/
+│       ├── deployment.yaml           # Kubernetes Deployment
+│       ├── service.yaml              # Kubernetes Service
+│       ├── ingress.yaml              # Ingress for external access
+│       ├── configuration.yaml        # ConfigMap + Secret
+│       └── docker-config.yaml        # Docker registry Secret
+└── .gitignore                        # Must include .werf_secret_key and .helm/secret-values-*.yaml.dec
+```
+
+## Dockerfile Template
+
+```dockerfile
+# Multi-stage build
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production=false
+COPY . .
+RUN yarn build
+RUN yarn install --frozen-lockfile --production=true && yarn cache clean
+
+FROM node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache dumb-init
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
+COPY --chown=nodejs:nodejs assets ./assets
+USER nodejs
+EXPOSE 3000
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main.js"]
+```
+
+## werf.yaml Template
+
+```yaml
+configVersion: 1
+project: <project-name>
+---
+image: app
+dockerfile: Dockerfile
+context: .
+```
+
+## .helm/Chart.yaml Template
+
+```yaml
+apiVersion: v2
+name: <project-name>
+description: <description>
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+```
+
+## .helm/values.yaml Structure
+
+```yaml
+app:
+  port: 3000  # Application port
+
+publicConfig:
+  # Non-sensitive public variables
+  ENV_VAR: "value"
+
+replication:
+  minReplicas: 1
+  maxReplicas: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  startup:
+    path: /health/check  # Must match app health endpoint
+    initialDelaySeconds: 5
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /health/check
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /health/check
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  host: <domain>
+  paths:
+    - /path1
+    - /path2
+  tls:
+    enabled: true
+  annotations: {}
+
+werf:
+  env: prod
+  image:
+    app: <will be set by werf>
+```
+
+## .helm/values-prod.yaml Template
+
+```yaml
+replication:
+  minReplicas: 1
+  maxReplicas: 1
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 768Mi
+
+publicConfig:
+  # Production-specific public config
+  ENV_VAR: "prod-value"
+
+ingress:
+  host: <production-domain>
+  tls:
+    enabled: true
+```
+
+## .helm/secret-values-prod.yaml Template
+
+```yaml
+secretConfig:
+  # All sensitive variables here
+  DB_HOST: "192.168.0.X"
+  DB_PORT: "5432"
+  DB_USER: "user"
+  DB_PASS: "password"
+  DB_NAME: "database"
+  # ... other secrets
+```
+
+## .helm/templates/deployment.yaml Key Points
+
+- Use `imagePullSecrets` conditionally - only if `secret/dockerconfig` file exists (for private registries)
+- Use `envFrom` with both `configMapRef` and `secretRef` (if needed)
+- Include health check probes
+- Set resource limits
+- Use `checksum/config` annotation for redeploy on config change
+- For public GHCR repositories, dockerconfig is not needed
+
+## .helm/templates/configuration.yaml Structure
+
+- ConfigMap for public variables (from `publicConfig`)
+- Secret for sensitive variables (from `secretConfig`)
+- Both use `stringData` or `data` with proper quoting
+
+## .helm/templates/ingress.yaml Key Points
+
+- Use `cert-manager.io/cluster-issuer: letsencrypt-prod` for TLS
+- Set `nginx.ingress.kubernetes.io/ssl-redirect: "true"`
+- Define paths for webhook endpoints
+- TLS secret name: `{{ .Release.Name }}-tls`
+
+## .github/workflows/deploy.yaml Structure
+
+```yaml
+on:
+  push:
+    branches:
+      - master  # or main
+
+env:
+  WERF_SECRET_KEY: ${{ secrets.WERF_SECRET_KEY }}
+  # IMPORTANT: Use lowercase username for GHCR (Docker registry requires lowercase)
+  WERF_REPO: ghcr.io/<lowercase-username>/<repo-name>
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Required for pushing to GHCR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install werf
+        uses: werf/actions/install@v1.2
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: <lowercase-username>  # Must be lowercase!
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish
+        run: werf build --repo $WERF_REPO
+
+  deploy-prod:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read  # Required for pulling from GHCR
+    env:
+      INGRESS_HOST: ${{ secrets.INGRESS_HOST || vars.INGRESS_HOST || 'default-domain.com' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install werf
+        uses: werf/actions/install@v1.2
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: <lowercase-username>  # Must be lowercase!
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+      - name: Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > ~/.kube/config
+      - name: Deploy to Kubernetes
+        run: |
+          werf converge \
+            --repo $WERF_REPO \
+            --namespace <namespace-name> \
+            --values .helm/values-prod.yaml \
+            --secret-values .helm/secret-values-prod.yaml \
+            --set ingress.host=${{ env.INGRESS_HOST }}
+```
+
+## Required GitHub Secrets
+
+- `WERF_SECRET_KEY` - from `.werf_secret_key` file
+- `KUBECONFIG_PROD` - base64 encoded kubeconfig: `cat ~/.kube/config-timeweb | base64`
+- `INGRESS_HOST` (optional) - domain name, defaults to value in values-prod.yaml if not set
+
+## Setup Steps
+
+1. Generate werf secret key: `werf helm secret generate-secret-key > .werf_secret_key`
+2. Encrypt secrets: `werf helm secret values edit .helm/secret-values-prod.yaml`
+3. Encrypt dockerconfig (only for private registries): `werf helm secret file encrypt /tmp/dockerconfig > .helm/secret/dockerconfig`
+   - For public GHCR repositories, skip this step - templates handle missing dockerconfig gracefully
+4. Create namespace: `kubectl create namespace <namespace-name>`
+5. Add GitHub Secrets
+6. Push to master - automatic deploy
+
+## Important Notes
+
+- **GHCR username must be lowercase**: Docker registry requires lowercase usernames. Use lowercase username in `WERF_REPO` and `username` field, even if GitHub username has uppercase letters
+- **Permissions**: Add `permissions` block to jobs - `packages: write` for build job, `packages: read` for deploy job
+- **Dockerconfig is optional**: For public repositories, `secret/dockerconfig` is not needed. Templates handle this automatically
+- All secret values must be quoted (strings only in env vars)
+- Use multiline `|` syntax for multi-line values
+- Health check endpoint must exist in application
+- Service port is 80 (maps to app port via Service)
+- Ingress paths should match application routes
+- Database permissions must be granted manually after DB creation
+- `INGRESS_HOST` can be set via GitHub Secret/Variable or will use default from values-prod.yaml
