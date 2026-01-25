@@ -34,7 +34,7 @@ export class PaymentTimeoutService {
     private readonly em: EntityManager,
     private readonly userService: UserService,
     private readonly telegraf: Telegraf,
-  ) { }
+  ) {}
 
   /**
    * Check for stuck payments every minute
@@ -43,6 +43,7 @@ export class PaymentTimeoutService {
    */
   @Cron('* * * * *') // Every minute
   async checkStuckPayments(): Promise<void> {
+    this.logger.debug('Checking for stuck payments...');
     try {
       const timeoutDate = new Date();
       timeoutDate.setMinutes(timeoutDate.getMinutes() - this.TIMEOUT_MINUTES);
@@ -61,6 +62,7 @@ export class PaymentTimeoutService {
         .getMany();
 
       if (stuckPayments.length === 0) {
+        this.logger.debug('No stuck payments found');
         return;
       }
 
