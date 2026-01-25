@@ -1,0 +1,8 @@
+configVersion: 1
+project: telegram-stars-market-bot
+---
+# Build configuration
+image: app
+dockerfile: Dockerfile
+context: .
+
