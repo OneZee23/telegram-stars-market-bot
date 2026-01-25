@@ -787,7 +787,7 @@
     multer "2.0.2"
     tslib "2.8.1"
 
-"@nestjs/schedule@^6.0.0":
+"@nestjs/schedule@^6.1.0":
   version "6.1.0"
   resolved "https://registry.yarnpkg.com/@nestjs/schedule/-/schedule-6.1.0.tgz#4653383c6aaf82e19754eae281ec1036da41febe"
   integrity sha512-W25Ydc933Gzb1/oo7+bWzzDiOissE+h/dhIAPugA39b9MuIzBbLybuXpc1AjoQLczO3v0ldmxaffVl87W0uqoQ==
