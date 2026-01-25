@@ -21,7 +21,6 @@ publicConfig:
 ingress:
   host: stars.onezee.ru
   paths:
-    - /
     - /telegram/webhook
     - /yookassa/webhook
   tls:
