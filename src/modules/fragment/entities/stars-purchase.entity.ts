@@ -18,6 +18,7 @@ export enum StarsPurchaseStatus {
 @Entity({ name: 'stars_purchases' })
 @Index(['userId'])
 @Index(['fragmentRequestId'])
+@Index(['status']) // For payment timeout service JOIN queries
 export class StarsPurchaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
