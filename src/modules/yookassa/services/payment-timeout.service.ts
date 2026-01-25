@@ -11,11 +11,12 @@ import { Telegraf } from 'telegraf';
 import { EntityManager } from 'typeorm';
 import { PaymentEntity, PaymentStatus } from '../entities/payment.entity';
 
-/**
- * Payment statuses that indicate successful payment
- * (payment was received, but stars purchase may still be processing)
- */
-const SUCCESSFUL_PAYMENT_STATUSES = [
+enum StuckPaymentReason {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+}
+
+const SUCCESSFUL_PAYMENT_STATUSES: PaymentStatus[] = [
   PaymentStatus.SUCCEEDED,
   PaymentStatus.WAITING_FOR_CAPTURE,
 ];
@@ -24,7 +25,7 @@ const SUCCESSFUL_PAYMENT_STATUSES = [
 export class PaymentTimeoutService {
   private readonly logger = new Logger(PaymentTimeoutService.name);
 
-  private readonly TIMEOUT_MINUTES = 5;
+  private readonly TIMEOUT_MINUTES = 15;
 
   // Track notifications to avoid duplicates (in-memory, resets on restart)
   private readonly notifiedPayments = new Set<string>();
@@ -38,41 +39,77 @@ export class PaymentTimeoutService {
 
   /**
    * Check for stuck payments every minute
-   * Payments that succeeded more than 5 minutes ago but purchase is not completed
+   * 1. Payments with PENDING status created more than 15 minutes ago (webhook didn't arrive)
+   * 2. Payments that succeeded more than 15 minutes ago but purchase is not completed
    * Works with any payment provider (YooKassa, etc.)
    */
   @Cron('* * * * *') // Every minute
   async checkStuckPayments(): Promise<void> {
     this.logger.debug('Checking for stuck payments...');
     try {
-      const timeoutDate = new Date();
-      timeoutDate.setMinutes(timeoutDate.getMinutes() - this.TIMEOUT_MINUTES);
+      // Use transaction for consistent read snapshot
+      await this.em.transaction(async (transactionalEm) => {
+        const timeoutDate = new Date();
+        timeoutDate.setMinutes(timeoutDate.getMinutes() - this.TIMEOUT_MINUTES);
 
-      // Find payments that:
-      // 1. Status indicates successful payment (SUCCEEDED, WAITING_FOR_CAPTURE, etc.)
-      // 2. Created more than 5 minutes ago
-      // 3. Have starsPurchaseId (purchase was started)
-      const stuckPayments = await this.em
-        .createQueryBuilder(PaymentEntity, 'payment')
-        .where('payment.status IN (:...statuses)', {
-          statuses: SUCCESSFUL_PAYMENT_STATUSES,
-        })
-        .andWhere('payment.created_at < :timeoutDate', { timeoutDate })
-        .andWhere('payment.stars_purchase_id IS NOT NULL')
-        .getMany();
+        // Case 1: Find payments that are still PENDING (webhook didn't arrive):
+        // 1. Status is PENDING
+        // 2. Created more than 15 minutes ago
+        // 3. Don't have starsPurchaseId (webhook never arrived, purchase never started)
+        const pendingStuckPayments = await transactionalEm
+          .createQueryBuilder(PaymentEntity, 'payment')
+          .where('payment.status = :pendingStatus', {
+            pendingStatus: PaymentStatus.PENDING,
+          })
+          .andWhere('payment.created_at < :timeoutDate', { timeoutDate })
+          .andWhere('payment.stars_purchase_id IS NULL')
+          .getMany();
 
-      if (stuckPayments.length === 0) {
-        this.logger.debug('No stuck payments found');
-        return;
-      }
+        // Case 2: Find payments that succeeded but purchase is stuck:
+        // 1. Status indicates successful payment (SUCCEEDED, WAITING_FOR_CAPTURE)
+        // 2. Updated more than 15 minutes ago (when payment became SUCCEEDED)
+        // 3. Have starsPurchaseId (purchase was started)
+        // 4. Purchase status is not COMPLETED and not FAILED
+        const succeededStuckPayments = await transactionalEm
+          .createQueryBuilder(PaymentEntity, 'payment')
+          .innerJoin(
+            StarsPurchaseEntity,
+            'purchase',
+            'purchase.id = payment.stars_purchase_id',
+          )
+          .where('payment.status IN (:...statuses)', {
+            statuses: SUCCESSFUL_PAYMENT_STATUSES,
+          })
+          .andWhere('payment.updated_at < :timeoutDate', { timeoutDate })
+          .andWhere('payment.stars_purchase_id IS NOT NULL')
+          .andWhere('purchase.status NOT IN (:...completedStatuses)', {
+            completedStatuses: [
+              StarsPurchaseStatus.COMPLETED,
+              StarsPurchaseStatus.FAILED,
+            ],
+          })
+          .select('payment')
+          .getMany();
 
-      this.logger.log(
-        `Found ${stuckPayments.length} potentially stuck payment(s)`,
-      );
+        const allStuckPayments = [
+          ...pendingStuckPayments,
+          ...succeededStuckPayments,
+        ];
 
-      await Promise.all(
-        stuckPayments.map((payment) => this.checkPaymentStatus(payment)),
-      );
+        if (allStuckPayments.length === 0) {
+          this.logger.debug('No stuck payments found');
+          return;
+        }
+
+        this.logger.log(
+          `Found ${allStuckPayments.length} potentially stuck payment(s) (${pendingStuckPayments.length} pending, ${succeededStuckPayments.length} succeeded but purchase stuck)`,
+        );
+
+        // Process payments outside transaction to avoid long-running transaction
+        await Promise.all(
+          allStuckPayments.map((payment) => this.checkPaymentStatus(payment)),
+        );
+      });
     } catch (error) {
       this.logger.error(
         `Error checking stuck payments: ${error instanceof Error ? error.message : String(error)}`,
@@ -86,7 +123,29 @@ export class PaymentTimeoutService {
    */
   private async checkPaymentStatus(payment: PaymentEntity): Promise<void> {
     try {
-      if (!payment.starsPurchaseId) {
+      if (this.notifiedPayments.has(payment.id)) {
+        return;
+      }
+
+      if (
+        payment.status === PaymentStatus.PENDING &&
+        !payment.starsPurchaseId
+      ) {
+        this.logger.warn(
+          `Payment ${payment.id} is stuck: still PENDING after ${this.TIMEOUT_MINUTES} minutes, webhook never arrived`,
+        );
+        await this.notifyUserAboutStuckPayment(
+          payment,
+          StuckPaymentReason.PENDING,
+        );
+        this.notifiedPayments.add(payment.id);
+        return;
+      }
+
+      if (
+        !SUCCESSFUL_PAYMENT_STATUSES.includes(payment.status) ||
+        !payment.starsPurchaseId
+      ) {
         return;
       }
 
@@ -101,7 +160,6 @@ export class PaymentTimeoutService {
         return;
       }
 
-      // If purchase is completed or failed, skip
       if (
         purchase.status === StarsPurchaseStatus.COMPLETED ||
         purchase.status === StarsPurchaseStatus.FAILED
@@ -109,17 +167,14 @@ export class PaymentTimeoutService {
         return;
       }
 
-      // Purchase is still processing after timeout - notify user
-      // Check if we already notified about this payment (avoid spam)
-      if (this.notifiedPayments.has(payment.id)) {
-        return;
-      }
-
       this.logger.warn(
-        `Payment ${payment.id} is stuck: purchase ${purchase.id} status is ${purchase.status} after ${this.TIMEOUT_MINUTES} minutes`,
+        `Payment ${payment.id} is stuck: purchase ${purchase.id} status is ${purchase.status} after ${this.TIMEOUT_MINUTES} minutes since payment succeeded`,
       );
 
-      await this.notifyUserAboutStuckPayment(payment);
+      await this.notifyUserAboutStuckPayment(
+        payment,
+        StuckPaymentReason.PROCESSING,
+      );
       this.notifiedPayments.add(payment.id);
     } catch (error) {
       this.logger.error(
@@ -133,14 +188,18 @@ export class PaymentTimeoutService {
    */
   private async notifyUserAboutStuckPayment(
     payment: PaymentEntity,
+    reason: StuckPaymentReason,
   ): Promise<void> {
     try {
       const user = await this.userService.getOrCreateUser(payment.userId);
       const t = getTranslations(user.language);
 
-      const message = t.buyStars.purchaseProcessing
-        .replace('{amount}', payment.starsAmount.toString())
-        .replace('{price}', payment.priceRub.toFixed(2));
+      const message =
+        reason === StuckPaymentReason.PENDING
+          ? t.buyStars.paymentStuck
+          : t.buyStars.purchaseProcessing
+              .replace('{amount}', payment.starsAmount.toString())
+              .replace('{price}', payment.priceRub.toFixed(2));
 
       await this.telegraf.telegram.sendMessage(
         parseInt(payment.userId, 10),
@@ -148,7 +207,7 @@ export class PaymentTimeoutService {
       );
 
       this.logger.log(
-        `Sent stuck payment notification to user ${payment.userId} for payment ${payment.id}`,
+        `Sent stuck payment notification to user ${payment.userId} for payment ${payment.id} (reason: ${reason})`,
       );
     } catch (error) {
       this.logger.error(
