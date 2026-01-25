@@ -48,7 +48,7 @@ Database:    PostgreSQL, TypeORM
 Bot:         Telegram Bot API (Inline buttons)
 Payments:    YooKassa (SBP, cards)
 Crypto:      Fragment API, TON
-Infra:       Docker, DigitalOcean, Grafana
+Infra:       Docker, Kubernetes, Helm, Timeweb Cloud
 ```
 
 ---

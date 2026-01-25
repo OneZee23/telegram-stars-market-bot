@@ -105,3 +105,10 @@ local_docs/
 # Fragment cookies (contains sensitive session data)
 fragment-cookies.json
 *.cookies.json
+
+# Kubernetes & Werf
+# DO NOT COMMIT werf secret key!
+.werf_secret_key
+
+# Unencrypted secret values (encrypted .yaml files are SAFE to commit)
+.helm/secret-values-*.yaml.dec
