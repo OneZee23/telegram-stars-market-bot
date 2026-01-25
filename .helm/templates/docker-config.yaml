@@ -9,5 +9,5 @@ metadata:
   namespace: {{ .Release.Namespace }}
 type: kubernetes.io/dockerconfigjson
 data:
-  .dockerconfigjson: {{ werf_secret_file "secret/dockerconfig" | b64enc }}
+  .dockerconfigjson: {{ werf_secret_file "dockerconfig" | b64enc }}
 

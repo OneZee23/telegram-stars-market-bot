@@ -3,7 +3,7 @@ name: Build and Deploy
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
     inputs:
       environment:
@@ -21,7 +21,7 @@ on:
 
 env:
   WERF_SECRET_KEY: ${{ secrets.WERF_SECRET_KEY }}
-  WERF_REPO: ghcr.io/${{ github.repository_owner }}/telegram-stars-market-bot
+  WERF_REPO: ghcr.io/onezee23/telegram-stars-market-bot
 
 jobs:
   # Stage: Build
@@ -93,6 +93,8 @@ jobs:
             --env prod \
             --release telegram-stars-market-bot \
             --namespace telegram-stars-market \
+            --values .helm/values-prod.yaml \
+            --secret-values .helm/secret-values-prod.yaml \
             --require-built-images
 
       - name: Verify deployment

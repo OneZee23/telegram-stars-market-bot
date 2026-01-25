@@ -1,16 +1,18 @@
 name: Lint Helm Chart
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - '.helm/**'
-  push:
-    branches:
-      - main
-    paths:
-      - '.helm/**'
+  workflow_dispatch:
+  # Disabled automatic runs - run manually if needed
+  # pull_request:
+  #   branches:
+  #     - master
+  #   paths:
+  #     - '.helm/**'
+  # push:
+  #   branches:
+  #     - master
+  #   paths:
+  #     - '.helm/**'
 
 env:
   WERF_SECRET_KEY: ${{ secrets.WERF_SECRET_KEY }}

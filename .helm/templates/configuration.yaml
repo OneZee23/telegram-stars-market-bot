@@ -1,4 +1,4 @@
-# ConfigMap for application configuration
+# ConfigMap for application configuration (public only)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,9 +14,17 @@ data:
   {{- range $key, $value := .Values.publicConfig }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
-  
+
+---
+# Secret for sensitive configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-secret
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
   # Secret configuration from secret-values.yaml
   {{- range $key, $value := .Values.secretConfig }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
-

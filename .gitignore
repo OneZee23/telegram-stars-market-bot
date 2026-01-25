@@ -112,3 +112,12 @@ fragment-cookies.json
 
 # Unencrypted secret values (encrypted .yaml files are SAFE to commit)
 .helm/secret-values-*.yaml.dec
+*.md
+!README.md
+docs/*.md
+!docs/BUSINESS_REQUIREMENTS.md
+!docs/EDGE_CASES.md
+!docs/FRAGMENT_SETUP.md
+!docs/PRODUCTION_CHECKLIST.md
+!docs/PROXY_SETUP.md
+!docs/TECHNICAL_SPECIFICATION.md
