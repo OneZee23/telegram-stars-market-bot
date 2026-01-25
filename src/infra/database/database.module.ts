@@ -29,7 +29,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         migrationsRun: config.migrate,
         synchronize: config.sync,
         logging: config.log,
-        ssl: config.cert ? { ca: config.cert } : false,
+        ssl: config.cert
+          ? {
+              ca: config.cert,
+              rejectUnauthorized: true,
+              checkServerIdentity: () => undefined, // Disable hostname check for IP connections
+            }
+          : false,
+        // Note: Ensure database user has proper permissions on schema 'public'
+        // See docs/DATABASE_SETUP.md for setup instructions
       }),
     }),
   ],
