@@ -35,6 +35,12 @@ export class UserEntity {
   @Column({ name: 'test_claims', type: 'int', default: 0 })
   testClaims: number;
 
+  @Column({ name: 'is_blocked_by_user', type: 'boolean', default: false })
+  isBlockedByUser: boolean;
+
+  @Column({ name: 'last_interaction_at', type: 'timestamp', nullable: true })
+  lastInteractionAt?: Date;
+
   @CreateDateColumn({ name: 'created_at' })
   public readonly createdAt: Date;
 

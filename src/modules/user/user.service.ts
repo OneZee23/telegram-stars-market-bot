@@ -45,6 +45,7 @@ export class UserService implements OnModuleInit {
     const cachedUser = this.getUserFromCache(userId);
     if (cachedUser) {
       await this.updateMetadataIfNeeded(cachedUser, metadataToUpdate, em);
+      await this.updateInteractionTime(cachedUser, em);
       return cachedUser;
     }
 
@@ -60,7 +61,45 @@ export class UserService implements OnModuleInit {
 
     this.userCache.set(userId, user);
     await this.updateMetadataIfNeeded(user, metadataToUpdate, em);
+    await this.updateInteractionTime(user, em);
     return user;
+  }
+
+  public async markUserAsBlocked(
+    userId: string,
+    transaction?: EntityManager,
+  ): Promise<void> {
+    const em = transaction ?? this.db;
+    const userRepo = em.getRepository(UserEntity);
+
+    const user = await userRepo.findOneBy({ userId });
+    if (!user) return;
+
+    if (!user.isBlockedByUser) {
+      user.isBlockedByUser = true;
+      await em.save(user);
+      this.userCache.set(userId, user);
+    }
+  }
+
+  private async updateInteractionTime(
+    user: UserEntity,
+    em: EntityManager,
+  ): Promise<void> {
+    const now = new Date();
+    const wasBlocked = user.isBlockedByUser;
+
+    // Always update lastInteractionAt on interaction
+    // If user was blocked, reset the flag (user unblocked the bot)
+    // eslint-disable-next-line no-param-reassign
+    if (wasBlocked) {
+      // eslint-disable-next-line no-param-reassign
+      user.isBlockedByUser = false;
+    }
+    // eslint-disable-next-line no-param-reassign
+    user.lastInteractionAt = now;
+    await em.save(user);
+    this.userCache.set(user.userId, user);
   }
 
   private async updateMetadataIfNeeded(
