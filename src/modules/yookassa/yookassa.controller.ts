@@ -3,6 +3,7 @@ import {
   StarsPurchaseStatus,
 } from '@modules/fragment/entities/stars-purchase.entity';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
+import { LEGAL_INFO } from '@modules/gateway/constants/legal.constants';
 import { getTranslations } from '@modules/gateway/i18n/translations';
 import { MessageManagementService } from '@modules/gateway/services/message-management.service';
 import { formatPriceForButton } from '@modules/gateway/utils/price-formatter.util';
@@ -174,10 +175,11 @@ export class YooKassaController {
       let message: string;
 
       if (purchase.status === StarsPurchaseStatus.COMPLETED) {
-        // Purchase completed - show success message
-        message = t.buyStars.purchaseCompleted
+        // Purchase completed - show success message with refund notice (ст. 26.1 ЗоЗПП)
+        message = t.delivery.completed
           .replace('{amount}', payment.starsAmount.toString())
-          .replace('{price}', formattedPrice);
+          .replace('{price}', formattedPrice)
+          .replace('{supportTelegram}', LEGAL_INFO.SUPPORT_TELEGRAM);
       } else if (purchase.status === StarsPurchaseStatus.FAILED) {
         // Purchase failed - show error message
         message = t.buyStars.purchaseError.replace(
@@ -195,6 +197,8 @@ export class YooKassaController {
         this.telegraf.telegram,
         payment.userId,
         message,
+        undefined,
+        { parse_mode: 'Markdown' },
       );
     } catch (error) {
       this.logger.warn(

@@ -37,4 +37,4 @@ import { TelegramBotService } from './telegram-bot.service';
   controllers: [TelegramBotController],
   exports: [TelegramBotService, PricingConfig, UserStateService],
 })
-export class TelegramBotModule { }
+export class TelegramBotModule {}
