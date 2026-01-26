@@ -4,6 +4,7 @@ import {
 } from '@common/utils/log-sanitizer.util';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { TelegramBotConfig } from '@modules/telegram-core/telegram-bot.config';
+import { UserService } from '@modules/user/user.service';
 import {
   Injectable,
   Logger,
@@ -21,8 +22,7 @@ import { ContextFactory } from './utils/context-factory.util';
 @Injectable()
 export class TelegramBotService
   extends EventEmitter
-  implements OnModuleInit, OnApplicationBootstrap
-{
+  implements OnModuleInit, OnApplicationBootstrap {
   constructor(
     private readonly config: TelegramBotConfig,
     private readonly telegraf: Telegraf,
@@ -31,6 +31,7 @@ export class TelegramBotService
     private readonly callbackQueryHandler: CallbackQueryHandler,
     private readonly messageHandler: MessageHandler,
     private readonly notificationsService: NotificationsService,
+    private readonly userService: UserService,
   ) {
     super({ captureRejections: true });
     this.on('error', (err) => this.logger.warn(`Error: ${err}`));
@@ -72,6 +73,19 @@ export class TelegramBotService
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+
+      // Handle "bot was blocked by the user" error - don't log as ERROR
+      if (this.isBotBlockedError(error)) {
+        const userContext = this.extractUserIdFromUpdate(update);
+        if (userContext) {
+          await this.userService.markUserAsBlocked(userContext.userId);
+          this.logger.debug(
+            `User ${userContext.userId} blocked the bot, flag set in database`,
+          );
+        }
+        return;
+      }
+
       this.logger.error(
         `Error handling update: ${errorMessage}`,
         error instanceof Error ? error.stack : undefined,
@@ -192,4 +206,28 @@ export class TelegramBotService
   }
 
   public static readonly webhookPath = 'telegram/webhook';
+
+  private isBotBlockedError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const errorMessage = error.message.toLowerCase();
+    return (
+      errorMessage.includes('bot was blocked by the user') ||
+      errorMessage.includes('forbidden: bot was blocked')
+    );
+  }
+
+  private extractUserIdFromUpdate(update: Update): { userId: string } | null {
+    if ('message' in update && update.message?.from) {
+      return { userId: update.message.from.id.toString() };
+    }
+
+    if ('callback_query' in update && update.callback_query?.from) {
+      return { userId: update.callback_query.from.id.toString() };
+    }
+
+    return null;
+  }
 }
