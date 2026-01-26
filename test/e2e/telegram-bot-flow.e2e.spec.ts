@@ -3,12 +3,9 @@ import { FragmentModule } from '@modules/fragment/fragment.module';
 import { FragmentApiClientService } from '@modules/fragment/services/fragment-api-client.service';
 import { ProxyManagerService } from '@modules/fragment/services/proxy-manager.service';
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
-import {
-  CallbackData
-} from '@modules/gateway/constants/callback-data.constants';
+import { CallbackData } from '@modules/gateway/constants/callback-data.constants';
 import { BotCommandHandler } from '@modules/gateway/handlers/bot-command.handler';
 import { CallbackQueryHandler } from '@modules/gateway/handlers/callback-query.handler';
-import { MessageHandler } from '@modules/gateway/handlers/message.handler';
 import { MessageManagementService } from '@modules/gateway/services/message-management.service';
 import { TelegramBotModule } from '@modules/gateway/telegram-bot.module';
 import { TelegramBotService } from '@modules/gateway/telegram-bot.service';
@@ -21,6 +18,7 @@ import { TonTransactionProvider } from '@modules/ton/providers/ton-transaction.p
 import { TonWalletProvider } from '@modules/ton/providers/ton-wallet.provider';
 import { TonConfig } from '@modules/ton/ton.config';
 import { UserEntity } from '@modules/user/entities/user.entity';
+import { ConsentService } from '@modules/user/services/consent.service';
 import { UserModule } from '@modules/user/user.module';
 import { UserService } from '@modules/user/user.service';
 import { YooKassaService } from '@modules/yookassa/services/yookassa.service';
@@ -63,18 +61,35 @@ describe('Telegram Bot Flow E2E', () => {
   let module: TestingModule;
   let botCommandHandler: BotCommandHandler;
   let callbackQueryHandler: CallbackQueryHandler;
-  let messageHandler: MessageHandler;
   let messageManagementService: MessageManagementService;
   let starsPurchaseService: StarsPurchaseService;
   let yooKassaService: YooKassaService;
   let userService: UserService;
   let entityManager: EntityManager;
 
+  // Mock for ConsentService - tracks consent state per user
+  const mockConsentState = new Map<string, boolean>();
+  const mockConsentService = {
+    hasValidConsent: jest.fn((userId: string) => {
+      return Promise.resolve(mockConsentState.get(userId) ?? false);
+    }),
+    grantConsent: jest.fn((userId: string) => {
+      mockConsentState.set(userId, true);
+      return Promise.resolve();
+    }),
+    revokeConsent: jest.fn((userId: string) => {
+      mockConsentState.set(userId, false);
+      return Promise.resolve();
+    }),
+    getCurrentVersion: jest.fn(() => 'v1.0'),
+  };
+
   // Test configuration
   const TEST_USER_ID = '999999999';
   const TEST_USERNAME = 'test_user';
   const TEST_USER_ID_NOT_WHITELISTED = '888888888';
   const TEST_USER_ID_ALREADY_CLAIMED = '777777777';
+  const TEST_USER_ID_NO_CONSENT = '666666666';
 
   // Mock context for handlers
   const createMockContext = (userId: string, username?: string): any => {
@@ -338,6 +353,8 @@ describe('Telegram Bot Flow E2E', () => {
         updatePaymentStatus: jest.fn().mockResolvedValue(undefined),
         handleWebhook: jest.fn().mockResolvedValue(undefined),
       })
+      .overrideProvider(ConsentService)
+      .useValue(mockConsentService)
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -356,7 +373,6 @@ describe('Telegram Bot Flow E2E', () => {
     botCommandHandler = module.get<BotCommandHandler>(BotCommandHandler);
     callbackQueryHandler =
       module.get<CallbackQueryHandler>(CallbackQueryHandler);
-    messageHandler = module.get<MessageHandler>(MessageHandler);
     messageManagementService = module.get<MessageManagementService>(
       MessageManagementService,
     );
@@ -374,28 +390,36 @@ describe('Telegram Bot Flow E2E', () => {
   });
 
   beforeEach(async () => {
+    // Reset mock consent state
+    mockConsentState.clear();
+    // Set consent for users that should have consent
+    mockConsentState.set(TEST_USER_ID, true);
+    mockConsentState.set(TEST_USER_ID_NOT_WHITELISTED, true);
+    mockConsentState.set(TEST_USER_ID_ALREADY_CLAIMED, true);
+    // TEST_USER_ID_NO_CONSENT stays without consent (not in map = false)
+
     // Create test users in database
     const userRepo = entityManager.getRepository(UserEntity);
 
-    // Whitelisted user with 0 claims and email
+    // Whitelisted user with 0 claims and email (has consent)
     let testUser = await userRepo.findOneBy({ userId: TEST_USER_ID });
     if (!testUser) {
       testUser = new UserEntity({
         userId: TEST_USER_ID,
         inWhiteList: true,
         testClaims: 0,
-        language: 'ru', // Set Russian language for tests
-        email: 'test@example.com', // Add email for payment flow
+        language: 'ru',
+        email: 'test@example.com',
       });
     } else {
       testUser.inWhiteList = true;
       testUser.testClaims = 0;
-      testUser.language = 'ru'; // Set Russian language for tests
-      testUser.email = 'test@example.com'; // Add email for payment flow
+      testUser.language = 'ru';
+      testUser.email = 'test@example.com';
     }
     await userRepo.save(testUser);
 
-    // Not whitelisted user (no email, should fail at whitelist check)
+    // Not whitelisted user (has consent but not whitelisted)
     let notWhitelistedUser = await userRepo.findOneBy({
       userId: TEST_USER_ID_NOT_WHITELISTED,
     });
@@ -404,18 +428,18 @@ describe('Telegram Bot Flow E2E', () => {
         userId: TEST_USER_ID_NOT_WHITELISTED,
         inWhiteList: false,
         testClaims: 0,
-        language: 'ru', // Set Russian language for tests
-        email: undefined, // No email - should fail at whitelist check before email check
+        language: 'ru',
+        email: undefined,
       });
     } else {
       notWhitelistedUser.inWhiteList = false;
       notWhitelistedUser.testClaims = 0;
-      notWhitelistedUser.language = 'ru'; // Set Russian language for tests
-      notWhitelistedUser.email = undefined; // Ensure no email
+      notWhitelistedUser.language = 'ru';
+      notWhitelistedUser.email = undefined;
     }
     await userRepo.save(notWhitelistedUser);
 
-    // Already claimed user (has email, but should fail at claim check)
+    // Already claimed user (has consent, whitelisted, but already claimed)
     let alreadyClaimedUser = await userRepo.findOneBy({
       userId: TEST_USER_ID_ALREADY_CLAIMED,
     });
@@ -423,20 +447,40 @@ describe('Telegram Bot Flow E2E', () => {
       alreadyClaimedUser = new UserEntity({
         userId: TEST_USER_ID_ALREADY_CLAIMED,
         inWhiteList: true,
-        testClaims: 1, // Already claimed
-        language: 'ru', // Set Russian language for tests
-        email: 'claimed@example.com', // Has email but should fail at claim check
+        testClaims: 1,
+        language: 'ru',
+        email: 'claimed@example.com',
       });
     } else {
       alreadyClaimedUser.inWhiteList = true;
       alreadyClaimedUser.testClaims = 1;
-      alreadyClaimedUser.language = 'ru'; // Set Russian language for tests
-      alreadyClaimedUser.email = 'claimed@example.com'; // Has email but should fail at claim check
+      alreadyClaimedUser.language = 'ru';
+      alreadyClaimedUser.email = 'claimed@example.com';
     }
     await userRepo.save(alreadyClaimedUser);
 
-    // Clear user cache to ensure language is updated from context
-    // Access private cache through reflection or force reload
+    // User without consent (for testing consent flow)
+    let noConsentUser = await userRepo.findOneBy({
+      userId: TEST_USER_ID_NO_CONSENT,
+    });
+    if (!noConsentUser) {
+      noConsentUser = new UserEntity({
+        userId: TEST_USER_ID_NO_CONSENT,
+        inWhiteList: true,
+        testClaims: 0,
+        language: 'ru',
+        email: 'noconsent@example.com',
+      });
+    } else {
+      noConsentUser.inWhiteList = true;
+      noConsentUser.testClaims = 0;
+      noConsentUser.language = 'ru';
+      noConsentUser.email = 'noconsent@example.com';
+    }
+    await userRepo.save(noConsentUser);
+    // Note: No consent for this user (mockConsentState doesn't have this user)
+
+    // Clear user cache
     (userService as any).userCache?.clear();
     await (userService as any).loadAllUsers();
 
@@ -444,13 +488,14 @@ describe('Telegram Bot Flow E2E', () => {
     messageManagementService.clearStoredMessage(TEST_USER_ID);
     messageManagementService.clearStoredMessage(TEST_USER_ID_NOT_WHITELISTED);
     messageManagementService.clearStoredMessage(TEST_USER_ID_ALREADY_CLAIMED);
+    messageManagementService.clearStoredMessage(TEST_USER_ID_NO_CONSENT);
 
     // Reset mocks
     jest.clearAllMocks();
   });
 
   describe('Bot Command Flow', () => {
-    it('should handle /start command and show main menu', async () => {
+    it('should handle /start command and show main menu for user with consent', async () => {
       const ctx = createMockContext(TEST_USER_ID);
 
       await botCommandHandler.handleStart(ctx);
@@ -459,6 +504,91 @@ describe('Telegram Bot Flow E2E', () => {
       const callArgs = (ctx.reply as jest.Mock).mock.calls[0];
       expect(callArgs[0]).toContain('Добро пожаловать');
       expect(callArgs[1]).toBeDefined(); // Options with keyboard
+    });
+
+    it('should show consent screen for user without consent', async () => {
+      const ctx = createMockContext(TEST_USER_ID_NO_CONSENT);
+
+      await botCommandHandler.handleStart(ctx);
+
+      expect(ctx.reply).toHaveBeenCalled();
+      const callArgs = (ctx.reply as jest.Mock).mock.calls[0];
+      expect(callArgs[0]).toContain(
+        'Согласие на обработку персональных данных',
+      );
+      expect(callArgs[1]).toBeDefined();
+      // Should have consent buttons
+      const keyboard = callArgs[1]?.reply_markup?.inline_keyboard;
+      expect(keyboard).toBeDefined();
+      const hasConsentButton = keyboard?.some((row: any[]) =>
+        row.some(
+          (btn: any) =>
+            btn.callback_data === CallbackData.CONSENT_GRANT ||
+            btn.text?.includes('Даю согласие'),
+        ),
+      );
+      expect(hasConsentButton).toBe(true);
+    });
+  });
+
+  describe('Consent Flow', () => {
+    it('should grant consent and show main menu', async () => {
+      const ctx = createMockContext(TEST_USER_ID_NO_CONSENT);
+
+      // Initialize message for editMessage to work
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID_NO_CONSENT,
+        'Initial message',
+      );
+
+      // Grant consent
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.CONSENT_GRANT,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const successCall = callArgs.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('Спасибо') || call[3].includes('Добро пожаловать')),
+      );
+      expect(successCall).toBeDefined();
+
+      // Verify grantConsent was called
+      expect(mockConsentService.grantConsent).toHaveBeenCalledWith(
+        TEST_USER_ID_NO_CONSENT,
+        expect.any(String),
+      );
+      // Verify consent state was updated in mock
+      expect(mockConsentState.get(TEST_USER_ID_NO_CONSENT)).toBe(true);
+    });
+
+    it('should redirect to consent screen when clicking on any button without consent', async () => {
+      const ctx = createMockContext(TEST_USER_ID_NO_CONSENT);
+
+      // Initialize message for editMessage to work
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID_NO_CONSENT,
+        'Initial message',
+      );
+
+      // Clear mocks to isolate callback handler behavior
+      jest.clearAllMocks();
+
+      // Try to click on BUY_STARS without consent
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.BUY_STARS,
+      );
+
+      // Should show consent screen instead (via ctx.reply since it's a new message)
+      expect(ctx.reply).toHaveBeenCalled();
+      const callArgs = (ctx.reply as jest.Mock).mock.calls[0];
+      expect(callArgs[0]).toContain('Согласие');
     });
   });
 
@@ -695,7 +825,7 @@ describe('Telegram Bot Flow E2E', () => {
       expect(ctx.telegram.editMessageText).toHaveBeenCalled();
     });
 
-    it('should handle help command', async () => {
+    it('should handle help command and show help menu', async () => {
       const ctx = createMockContext(TEST_USER_ID);
 
       // Initialize message for editMessage to work
@@ -707,6 +837,186 @@ describe('Telegram Bot Flow E2E', () => {
 
       await callbackQueryHandler.handleCallbackQuery(ctx, CallbackData.HELP);
 
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const helpCall = callArgs.find(
+        (call) => call[3] && call[3].includes('Помощь'),
+      );
+      expect(helpCall).toBeDefined();
+    });
+  });
+
+  describe('Help Menu Flow', () => {
+    it('should show offer info', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_OFFER,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const offerCall = callArgs.find(
+        (call) =>
+          call[3] && (call[3].includes('оферт') || call[3].includes('Оферт')),
+      );
+      expect(offerCall).toBeDefined();
+    });
+
+    it('should show privacy policy info', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_PRIVACY,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const privacyCall = callArgs.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('конфиденциальност') ||
+            call[3].includes('Политика')),
+      );
+      expect(privacyCall).toBeDefined();
+    });
+
+    it('should show contacts info', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_CONTACTS,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const contactsCall = callArgs.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('Контакт') || call[3].includes('@onezee123')),
+      );
+      expect(contactsCall).toBeDefined();
+    });
+
+    it('should show FAQ', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_FAQ,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      // Russian: "Часто задаваемые вопросы", English: "Frequently Asked Questions"
+      const faqCall = callArgs.find(
+        (call) =>
+          call[3] &&
+          (call[3].includes('Часто задаваемые') ||
+            call[3].includes('Frequently Asked')),
+      );
+      expect(faqCall).toBeDefined();
+    });
+
+    it('should show revoke consent warning', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_REVOKE,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+      const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
+      const revokeCall = callArgs.find(
+        (call) =>
+          call[3] && (call[3].includes('Отзыв') || call[3].includes('уверены')),
+      );
+      expect(revokeCall).toBeDefined();
+    });
+
+    it('should revoke consent when confirmed', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      // Verify user has consent before revoking
+      expect(mockConsentState.get(TEST_USER_ID)).toBe(true);
+
+      // Revoke consent
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_REVOKE_CONFIRM,
+      );
+
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+
+      // Verify revokeConsent was called
+      expect(mockConsentService.revokeConsent).toHaveBeenCalledWith(
+        TEST_USER_ID,
+      );
+      // Verify consent state was updated in mock
+      expect(mockConsentState.get(TEST_USER_ID)).toBe(false);
+    });
+
+    it('should navigate back to help menu from submenu', async () => {
+      const ctx = createMockContext(TEST_USER_ID);
+
+      await messageManagementService.sendMessage(
+        ctx,
+        TEST_USER_ID,
+        'Initial message',
+      );
+
+      // Go to FAQ
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_FAQ,
+      );
+      expect(ctx.telegram.editMessageText).toHaveBeenCalled();
+
+      // Go back to help
+      await callbackQueryHandler.handleCallbackQuery(
+        ctx,
+        CallbackData.HELP_BACK,
+      );
       expect(ctx.telegram.editMessageText).toHaveBeenCalled();
       const callArgs = (ctx.telegram.editMessageText as jest.Mock).mock.calls;
       const helpCall = callArgs.find(

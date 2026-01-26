@@ -34,7 +34,7 @@ export class PaymentTimeoutService {
     private readonly userService: UserService,
     private readonly telegraf: Telegraf,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   /**
    * Check for stuck payments every minute
@@ -214,8 +214,8 @@ export class PaymentTimeoutService {
         reason === StuckPaymentReason.PENDING
           ? t.buyStars.paymentStuck
           : t.buyStars.purchaseProcessing
-            .replace('{amount}', payment.starsAmount.toString())
-            .replace('{price}', payment.priceRub.toFixed(2));
+              .replace('{amount}', payment.starsAmount.toString())
+              .replace('{price}', payment.priceRub.toFixed(2));
 
       await this.telegraf.telegram.sendMessage(
         parseInt(payment.userId, 10),

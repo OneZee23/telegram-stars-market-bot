@@ -1,4 +1,5 @@
 import { StarsPurchaseService } from '@modules/fragment/services/stars-purchase.service';
+import { ConsentService } from '@modules/user/services/consent.service';
 import { WhitelistService } from '@modules/user/services/whitelist.service';
 import { UserService } from '@modules/user/user.service';
 import { YooKassaService } from '@modules/yookassa/services/yookassa.service';
@@ -15,7 +16,8 @@ import {
   buildAmountCallback,
   CallbackData,
 } from '../constants/callback-data.constants';
-import { getTranslations } from '../i18n/translations';
+import { LEGAL_INFO } from '../constants/legal.constants';
+import { getTranslations, Translations } from '../i18n/translations';
 import { MessageManagementService } from '../services/message-management.service';
 import { UserState, UserStateService } from '../services/user-state.service';
 import {
@@ -26,6 +28,7 @@ import {
 import { ContextExtractor } from '../utils/context-extractor.util';
 import { KeyboardBuilder } from '../utils/keyboard-builder.util';
 import { formatPriceForButton } from '../utils/price-formatter.util';
+import { BotCommandHandler } from './bot-command.handler';
 
 @Injectable()
 export class CallbackQueryHandler {
@@ -39,6 +42,8 @@ export class CallbackQueryHandler {
     private readonly yooKassaService: YooKassaService,
     private readonly userService: UserService,
     private readonly pricingConfig: PricingConfig,
+    private readonly consentService: ConsentService,
+    private readonly botCommandHandler: BotCommandHandler,
   ) {}
 
   async handleCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
@@ -56,6 +61,24 @@ export class CallbackQueryHandler {
 
     if (ctx.callbackQuery && 'answerCallbackQuery' in ctx) {
       await ctx.answerCbQuery();
+    }
+
+    // Consent-related callbacks don't require consent check
+    const consentRelatedCallbacks: string[] = [CallbackData.CONSENT_GRANT];
+
+    // Check consent for non-consent callbacks
+    if (!consentRelatedCallbacks.includes(callbackData)) {
+      const hasConsent = await this.consentService.hasValidConsent(
+        userContext.userId,
+      );
+      if (!hasConsent) {
+        await this.botCommandHandler.showConsentScreen(
+          ctx,
+          userContext.userId,
+          t,
+        );
+        return;
+      }
     }
 
     // Check if callback is for amount selection (amount_XXX or amount_XXX_test)
@@ -87,6 +110,12 @@ export class CallbackQueryHandler {
     }
 
     switch (callbackData) {
+      // Consent
+      case CallbackData.CONSENT_GRANT:
+        await this.handleConsentGrant(ctx, userContext.userId, t, userContext);
+        break;
+
+      // Main menu
       case CallbackData.HELP:
         await this.handleHelp(ctx, userContext.userId, t);
         break;
@@ -112,21 +141,104 @@ export class CallbackQueryHandler {
       case CallbackData.BACK_TO_MAIN:
         await this.handleBackToMain(ctx, userContext.userId, t);
         break;
+
+      // Help submenu
+      case CallbackData.HELP_OFFER:
+        await this.handleHelpOffer(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_PRIVACY:
+        await this.handleHelpPrivacy(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_CONTACTS:
+        await this.handleHelpContacts(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_FAQ:
+        await this.handleHelpFaq(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_REVOKE:
+        await this.handleHelpRevoke(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_REVOKE_CONFIRM:
+        await this.handleHelpRevokeConfirm(ctx, userContext.userId, t);
+        break;
+      case CallbackData.HELP_BACK:
+        await this.handleHelp(ctx, userContext.userId, t);
+        break;
+
       default:
         break;
     }
   }
 
+  /**
+   * Handle consent grant callback
+   */
+  private async handleConsentGrant(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+    userContext: ReturnType<typeof ContextExtractor.extractUserContext>,
+  ): Promise<void> {
+    await this.consentService.grantConsent(userId, userContext?.username);
+
+    // Show success message and main menu
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [
+        {
+          text: t.mainMenu.buyStars,
+          callback_data: CallbackData.BUY_STARS,
+        },
+      ],
+      [{ text: t.mainMenu.help, callback_data: CallbackData.HELP }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.consent.accepted + '\n\n' + t.mainMenu.title,
+      keyboard,
+    );
+  }
+
+  /**
+   * Show help menu with legal documents
+   */
   private async handleHelp(
     ctx: Context,
     userId: string,
-    t: ReturnType<typeof getTranslations>,
+    t: Translations,
   ): Promise<void> {
-    const channelLink = 'https://t.me/onezee_co';
-    const text = `${t.help.title}\n\n${t.help.description}\n\n${channelLink}`;
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [{ text: t.helpMenu.offer, callback_data: CallbackData.HELP_OFFER }],
+      [{ text: t.helpMenu.privacy, callback_data: CallbackData.HELP_PRIVACY }],
+      [
+        { text: t.helpMenu.contacts, callback_data: CallbackData.HELP_CONTACTS },
+      ],
+      [{ text: t.helpMenu.faq, callback_data: CallbackData.HELP_FAQ }],
+      [{ text: t.helpMenu.revoke, callback_data: CallbackData.HELP_REVOKE }],
+      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.helpMenu.title,
+      keyboard,
+    );
+  }
+
+  /**
+   * Show offer/terms of service
+   */
+  private async handleHelpOffer(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    const text = t.helpMenu.offerText.replace('{offerUrl}', LEGAL_INFO.OFFER_URL);
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
-      [{ text: t.mainMenu.back, callback_data: CallbackData.BACK_TO_MAIN }],
+      [{ text: t.helpMenu.back, callback_data: CallbackData.HELP_BACK }],
     ]);
 
     await this.messageManagementService.editMessage(
@@ -134,6 +246,129 @@ export class CallbackQueryHandler {
       userId,
       text,
       keyboard,
+      { parse_mode: 'Markdown' },
+    );
+  }
+
+  /**
+   * Show privacy policy
+   */
+  private async handleHelpPrivacy(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    const text = t.helpMenu.privacyText.replace(
+      '{privacyUrl}',
+      LEGAL_INFO.PRIVACY_URL,
+    );
+
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [{ text: t.helpMenu.back, callback_data: CallbackData.HELP_BACK }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      text,
+      keyboard,
+      { parse_mode: 'Markdown' },
+    );
+  }
+
+  /**
+   * Show contacts
+   */
+  private async handleHelpContacts(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    const text = t.helpMenu.contactsText
+      .replace('{supportEmail}', LEGAL_INFO.SUPPORT_EMAIL)
+      .replace('{supportTelegram}', LEGAL_INFO.SUPPORT_TELEGRAM);
+
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [{ text: t.helpMenu.back, callback_data: CallbackData.HELP_BACK }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      text,
+      keyboard,
+      { parse_mode: 'Markdown' },
+    );
+  }
+
+  /**
+   * Show FAQ
+   */
+  private async handleHelpFaq(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    const text = t.helpMenu.faqText.replace(
+      /{supportTelegram}/g,
+      LEGAL_INFO.SUPPORT_TELEGRAM,
+    );
+
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [{ text: t.helpMenu.back, callback_data: CallbackData.HELP_BACK }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      text,
+      keyboard,
+      { parse_mode: 'Markdown' },
+    );
+  }
+
+  /**
+   * Show revoke consent warning
+   */
+  private async handleHelpRevoke(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    const keyboard = KeyboardBuilder.createInlineKeyboard([
+      [
+        {
+          text: t.helpMenu.revokeConfirm,
+          callback_data: CallbackData.HELP_REVOKE_CONFIRM,
+        },
+      ],
+      [{ text: t.helpMenu.cancel, callback_data: CallbackData.HELP_BACK }],
+    ]);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.helpMenu.revokeWarning,
+      keyboard,
+      { parse_mode: 'Markdown' },
+    );
+  }
+
+  /**
+   * Confirm and revoke consent
+   */
+  private async handleHelpRevokeConfirm(
+    ctx: Context,
+    userId: string,
+    t: Translations,
+  ): Promise<void> {
+    await this.consentService.revokeConsent(userId);
+
+    await this.messageManagementService.editMessage(
+      ctx,
+      userId,
+      t.helpMenu.revokeSuccess,
+      undefined,
     );
   }
 
@@ -520,10 +755,18 @@ export class CallbackQueryHandler {
       return;
     }
 
-    // Show payment link - сразу открываем ссылку или показываем кнопку
-    const paymentText = t.buyStars.paymentCreated
-      .replace('{amount}', amount.toString())
-      .replace('{price}', formatPriceForButton(pricing.priceRub));
+    // Show payment link with seller info
+    const sellerInfo = t.sellerInfo.prePayment.replace(
+      '{offerUrl}',
+      LEGAL_INFO.OFFER_URL,
+    );
+
+    const paymentText =
+      t.buyStars.paymentCreated
+        .replace('{amount}', amount.toString())
+        .replace('{price}', formatPriceForButton(pricing.priceRub)) +
+      '\n\n' +
+      sellerInfo;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [
@@ -545,6 +788,7 @@ export class CallbackQueryHandler {
       userId,
       paymentText,
       keyboard,
+      { parse_mode: 'Markdown' },
     );
   }
 

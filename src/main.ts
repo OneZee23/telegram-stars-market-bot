@@ -7,9 +7,6 @@ import { NestFactory } from '@nestjs/core';
 import 'reflect-metadata';
 import { AppModule } from './app.module';
 
-// TODO: remove this after testing
-require('dotenv').config();
-
 (async () => {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();

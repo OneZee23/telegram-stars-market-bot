@@ -21,8 +21,9 @@ export class MessageManagementService {
     userId: string,
     text: string,
     keyboard?: TelegramKeyboard,
+    extra?: Partial<ExtraReplyMessage>,
   ): Promise<number | null> {
-    const options: ExtraReplyMessage = {};
+    const options: ExtraReplyMessage = { ...extra };
     if (keyboard && 'inline_keyboard' in keyboard) {
       options.reply_markup = keyboard;
     } else if (keyboard && 'keyboard' in keyboard) {
@@ -48,6 +49,7 @@ export class MessageManagementService {
     userId: string,
     text: string,
     keyboard?: InlineKeyboard,
+    extra?: Partial<ExtraEditMessageText>,
   ): Promise<boolean> {
     const storedMessage = this.userMessages.get(userId);
     if (!storedMessage) {
@@ -55,7 +57,7 @@ export class MessageManagementService {
     }
 
     try {
-      const options: ExtraEditMessageText = {};
+      const options: ExtraEditMessageText = { ...extra };
       if (keyboard) {
         options.reply_markup = keyboard;
       }
@@ -122,6 +124,7 @@ export class MessageManagementService {
     userId: string,
     text: string,
     keyboard?: InlineKeyboard,
+    extra?: Partial<ExtraEditMessageText>,
   ): Promise<boolean> {
     const storedMessage = this.userMessages.get(userId);
     if (!storedMessage) {
@@ -129,7 +132,7 @@ export class MessageManagementService {
     }
 
     try {
-      const options: ExtraEditMessageText = {};
+      const options: ExtraEditMessageText = { ...extra };
       if (keyboard) {
         options.reply_markup = keyboard;
       }
