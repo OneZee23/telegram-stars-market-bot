@@ -12,6 +12,18 @@ export enum CallbackData {
   BUY_FOR_MYSELF = 'buy_for_myself',
   BUY_FOR_OTHER = 'buy_for_other',
   AMOUNT_CUSTOM = 'amount_custom',
+
+  // Consent flow
+  CONSENT_GRANT = 'consent_grant',
+
+  // Help submenu
+  HELP_OFFER = 'help_offer',
+  HELP_PRIVACY = 'help_privacy',
+  HELP_CONTACTS = 'help_contacts',
+  HELP_FAQ = 'help_faq',
+  HELP_REVOKE = 'help_revoke',
+  HELP_REVOKE_CONFIRM = 'help_revoke_confirm',
+  HELP_BACK = 'help_back',
 }
 
 /**
