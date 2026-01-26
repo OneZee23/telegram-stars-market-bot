@@ -39,7 +39,6 @@ export interface Translations {
     paymentSuccess: string;
     purchaseCompleted: string;
     purchaseProcessing: string;
-    paymentStuck: string;
   };
   errors: {
     usernameRequired: string;
@@ -156,7 +155,10 @@ export const translations: Record<string, Translations> = {
         '✅ Платеж создан!\n\n' +
         '✨ Количество: {amount} ⭐\n' +
         '💰 Сумма: {price}\n\n' +
-        'Нажмите кнопку ниже для перехода к оплате:',
+        'Нажмите кнопку ниже для перехода к оплате.\n\n' +
+        '———\n' +
+        '💡 Если вы оплатили, но звёзды не пришли — напишите нам: @onezee123 (ответ в течение 24ч).\n' +
+        'Если дольше — пишите в группу @onezee\\_co.',
       paymentSuccess:
         '✅ Оплата успешно получена!\n\n' +
         '✨ Количество: {amount} ⭐\n' +
@@ -172,14 +174,6 @@ export const translations: Record<string, Translations> = {
         '⏳ Идет покупка и отправка звезд...\n\n' +
         'Пожалуйста, подождите от 1 минуты до 5 минут (в редких случаях).\n\n' +
         'Если процесс займет дольше, напишите администратору: @onezee123',
-      paymentStuck:
-        '⚠️ Платеж застрял\n\n' +
-        'Прошло более 15 минут с момента создания платежа, но мы не получили подтверждение оплаты.\n\n' +
-        'Возможные причины:\n' +
-        '• Вы уже оплатили, но транзакция застряла на стороне платежной системы\n' +
-        '• Произошла проблема на нашей стороне\n\n' +
-        'Если у вас есть сомнения или вы уже оплатили, пожалуйста, напишите администратору: @onezee123\n\n' +
-        'Мы разберемся с вашим платежом в кратчайшие сроки.',
     },
     errors: {
       usernameRequired:
@@ -371,7 +365,10 @@ export const translations: Record<string, Translations> = {
         '✅ Payment created!\n\n' +
         '✨ Amount: {amount} ⭐\n' +
         '💰 Price: {price}\n\n' +
-        'Click the button below to proceed to payment:',
+        'Click the button below to proceed to payment.\n\n' +
+        '———\n' +
+        '💡 If you paid but stars didn\'t arrive — contact us: @onezee123 (response within 24h).\n' +
+        'If longer — write to @onezee\\_co group.',
       paymentSuccess:
         '✅ Payment received successfully!\n\n' +
         '✨ Amount: {amount} ⭐\n' +
@@ -387,14 +384,6 @@ export const translations: Record<string, Translations> = {
         '⏳ Purchase and sending stars in progress...\n\n' +
         'Please wait from 1 minute to 5 minutes (in rare cases).\n\n' +
         'If the process takes longer, contact administrator: @onezee123',
-      paymentStuck:
-        '⚠️ Payment is stuck\n\n' +
-        'More than 15 minutes have passed since the payment was created, but we did not receive payment confirmation.\n\n' +
-        'Possible reasons:\n' +
-        '• You already paid, but the transaction is stuck on the payment system side\n' +
-        '• A problem occurred on our side\n\n' +
-        'If you have any doubts or you already paid, please contact administrator: @onezee123\n\n' +
-        'We will resolve your payment issue as soon as possible.',
     },
     errors: {
       usernameRequired:
