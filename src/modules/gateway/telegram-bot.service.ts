@@ -2,6 +2,7 @@ import {
   sanitizeLogMessage,
   sanitizeLogObject,
 } from '@common/utils/log-sanitizer.util';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { TelegramBotConfig } from '@modules/telegram-core/telegram-bot.config';
 import {
   Injectable,
@@ -29,6 +30,7 @@ export class TelegramBotService
     private readonly botCommandHandler: BotCommandHandler,
     private readonly callbackQueryHandler: CallbackQueryHandler,
     private readonly messageHandler: MessageHandler,
+    private readonly notificationsService: NotificationsService,
   ) {
     super({ captureRejections: true });
     this.on('error', (err) => this.logger.warn(`Error: ${err}`));
@@ -55,16 +57,34 @@ export class TelegramBotService
     const sanitizedUpdate = sanitizeLogObject(update);
     this.logger.log(`Incoming update: ${JSON.stringify(sanitizedUpdate)}`);
 
-    if ('message' in update) {
-      this.emit('message', update.message);
-      await this.handleMessage(update.message, update.update_id);
-    } else if ('callback_query' in update) {
-      await this.handleCallbackQuery(update.callback_query, update.update_id);
-    } else {
-      const type = Object.keys(update)
-        .filter((k) => k !== 'update_id')
-        .pop();
-      this.logger.warn(`Unknown update type: ${type}`);
+    try {
+      if ('message' in update) {
+        this.emit('message', update.message);
+        await this.handleMessage(update.message, update.update_id);
+      } else if ('callback_query' in update) {
+        await this.handleCallbackQuery(update.callback_query, update.update_id);
+      } else {
+        const type = Object.keys(update)
+          .filter((k) => k !== 'update_id')
+          .pop();
+        this.logger.warn(`Unknown update type: ${type}`);
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Error handling update: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
+      // Send alert for all errors
+      this.notificationsService
+        .notifyCriticalError('Telegram bot', 'Произошла ошибка')
+        .catch((err) => {
+          this.logger.error(
+            `Failed to send alert: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
   }
 

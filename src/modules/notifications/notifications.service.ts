@@ -165,6 +165,24 @@ export class NotificationsService {
     await this.sendMessage(message);
   }
 
+  async notifyCriticalError(errorType: string, message: string): Promise<void> {
+    const time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    });
+
+    const alertMessage =
+      `🚨 Критическая ошибка\n\n` +
+      `❌ Тип: ${errorType}\n` +
+      `📝 Сообщение: ${message}\n` +
+      `⏱ Время (UTC): ${time}\n\n` +
+      `Требуется проверка системы`;
+
+    await this.sendMessage(alertMessage);
+  }
+
   private async sendMessage(text: string): Promise<void> {
     if (this.config.disableAlerts) {
       this.logger.debug('Alerts disabled, skipping notification');
