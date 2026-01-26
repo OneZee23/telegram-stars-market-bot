@@ -101,44 +101,70 @@ export class StonfiSwapService {
     usdtAmount: string,
     minTonAmount: string,
   ): Promise<SwapResult> {
-    try {
-      const walletData = await this.tonWalletProvider.initializeWalletForSwap();
-      if (!walletData) {
+    const maxRetries = 3;
+    let lastError: string = '';
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const walletData =
+          await this.tonWalletProvider.initializeWalletForSwap();
+        if (!walletData) {
+          return {
+            success: false,
+            error: 'Failed to initialize wallet',
+          };
+        }
+
+        this.logger.log(
+          `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON) via Omniston (attempt ${attempt}/${maxRetries})`,
+        );
+
+        const quote = await this.requestOmnistonQuote(usdtAmount);
+        this.verifyQuoteMeetsMinimum(quote, minTonAmount);
+
+        const tx = await this.buildOmnistonTransaction(quote, walletData);
+        await this.sendOmnistonTransaction(tx, walletData);
+
+        this.logger.log(
+          `Swap transaction sent via Omniston. Quote ID: ${quote.quoteId}`,
+        );
+
+        await this.waitForTransactionConfirmation();
+
+        return {
+          success: true,
+          txHash: `omniston-${quote.quoteId}`,
+        };
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        lastError = errorMessage;
+
+        // Retry on "quoteUpdated without ack" error - this is a timing issue with the SDK
+        const isAckError =
+          errorMessage.includes('quoteUpdated') &&
+          errorMessage.includes('ack');
+
+        if (isAckError && attempt < maxRetries) {
+          this.logger.warn(
+            `Quote request failed due to ack timing issue, retrying in 1s... (attempt ${attempt}/${maxRetries})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        this.logger.error(`Swap failed: ${errorMessage}`);
         return {
           success: false,
-          error: 'Failed to initialize wallet',
+          error: errorMessage,
         };
       }
-
-      this.logger.log(
-        `Swapping ${usdtAmount} nano USDT to TON (min: ${minTonAmount} nano TON) via Omniston`,
-      );
-
-      const quote = await this.requestOmnistonQuote(usdtAmount);
-      this.verifyQuoteMeetsMinimum(quote, minTonAmount);
-
-      const tx = await this.buildOmnistonTransaction(quote, walletData);
-      await this.sendOmnistonTransaction(tx, walletData);
-
-      this.logger.log(
-        `Swap transaction sent via Omniston. Quote ID: ${quote.quoteId}`,
-      );
-
-      await this.waitForTransactionConfirmation();
-
-      return {
-        success: true,
-        txHash: `omniston-${quote.quoteId}`,
-      };
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(`Swap failed: ${errorMessage}`);
-      return {
-        success: false,
-        error: errorMessage,
-      };
     }
+
+    return {
+      success: false,
+      error: lastError || 'Max retries exceeded',
+    };
   }
 
   private async requestOmnistonQuote(usdtAmount: string): Promise<any> {
