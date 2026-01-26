@@ -44,7 +44,6 @@ export class PaymentTimeoutService {
    */
   @Cron('* * * * *') // Every minute
   async checkStuckPayments(): Promise<void> {
-    this.logger.debug('Checking for stuck payments...');
     try {
       // Use transaction for consistent read snapshot
       await this.em.transaction(async (transactionalEm) => {
@@ -104,7 +103,6 @@ export class PaymentTimeoutService {
         ];
 
         if (allStuckPayments.length === 0) {
-          this.logger.debug('No stuck payments found');
           return;
         }
 

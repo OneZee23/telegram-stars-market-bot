@@ -23,17 +23,20 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   private readonly CRITICAL_ERROR_COOLDOWN_MS = 60000; // 1 minute
 
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(private readonly notificationsService: NotificationsService) { }
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
-    // Log error
+    // Log error (skip 404 to avoid log spam from bots/scanners)
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
-      const { message } = exception;
-      this.logger.error(`HTTP ${status}: ${message}`);
+      // Don't log 404 errors to avoid log spam
+      if (status !== HttpStatus.NOT_FOUND) {
+        const { message } = exception;
+        this.logger.error(`HTTP ${status}: ${message}`);
+      }
     } else if (exception instanceof Error) {
       this.logger.error(
         `Unhandled error: ${exception.message}`,
@@ -43,11 +46,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.error(`Unknown error: ${JSON.stringify(exception)}`);
     }
 
-    // Send alert for all errors
-    this.sendAlert();
+    // Send alert for all errors (except 404)
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+    if (status !== HttpStatus.NOT_FOUND) {
+      this.sendAlert();
+    }
 
     // Send response
-    const status =
+    const responseStatus =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
@@ -57,8 +66,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         ? exception.message
         : 'Internal server error';
 
-    response.status(status).json({
-      statusCode: status,
+    response.status(responseStatus).json({
+      statusCode: responseStatus,
       message,
       timestamp: new Date().toISOString(),
     });

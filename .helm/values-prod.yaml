@@ -22,7 +22,7 @@ ingress:
   host: stars.onezee.ru
   paths:
     - /telegram/webhook
-    - /yookassa/webhook
+    - /api/yookassa/webhook
   tls:
     enabled: true
 
