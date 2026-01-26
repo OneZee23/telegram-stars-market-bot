@@ -3,6 +3,7 @@ import {
   StarsPurchaseStatus,
 } from '@modules/fragment/entities/stars-purchase.entity';
 import { getTranslations } from '@modules/gateway/i18n/translations';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { UserService } from '@modules/user/user.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -32,7 +33,8 @@ export class PaymentTimeoutService {
     private readonly em: EntityManager,
     private readonly userService: UserService,
     private readonly telegraf: Telegraf,
-  ) {}
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   /**
    * Check for stuck payments every minute
@@ -116,10 +118,21 @@ export class PaymentTimeoutService {
         );
       });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Error checking stuck payments: ${error instanceof Error ? error.message : String(error)}`,
+        `Error checking stuck payments: ${errorMessage}`,
         error instanceof Error ? error.stack : undefined,
       );
+
+      // Send alert for all errors
+      this.notificationsService
+        .notifyCriticalError('Payment timeout service', 'Произошла ошибка')
+        .catch((err) => {
+          this.logger.error(
+            `Failed to send alert: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
   }
 
@@ -201,8 +214,8 @@ export class PaymentTimeoutService {
         reason === StuckPaymentReason.PENDING
           ? t.buyStars.paymentStuck
           : t.buyStars.purchaseProcessing
-              .replace('{amount}', payment.starsAmount.toString())
-              .replace('{price}', payment.priceRub.toFixed(2));
+            .replace('{amount}', payment.starsAmount.toString())
+            .replace('{price}', payment.priceRub.toFixed(2));
 
       await this.telegraf.telegram.sendMessage(
         parseInt(payment.userId, 10),

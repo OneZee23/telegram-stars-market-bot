@@ -1,4 +1,5 @@
 import { FragmentModule } from '@modules/fragment/fragment.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { TelegramCoreModule } from '@modules/telegram-core/telegram-core.module';
 import { UserModule } from '@modules/user/user.module';
 import { YooKassaModule } from '@modules/yookassa/yookassa.module';
@@ -13,7 +14,13 @@ import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 
 @Module({
-  imports: [TelegramCoreModule, UserModule, FragmentModule, YooKassaModule],
+  imports: [
+    TelegramCoreModule,
+    UserModule,
+    FragmentModule,
+    YooKassaModule,
+    NotificationsModule,
+  ],
   providers: [
     PricingConfig,
     TelegramBotService,
@@ -30,4 +37,4 @@ import { TelegramBotService } from './telegram-bot.service';
   controllers: [TelegramBotController],
   exports: [TelegramBotService, PricingConfig, UserStateService],
 })
-export class TelegramBotModule {}
+export class TelegramBotModule { }

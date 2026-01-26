@@ -1,9 +1,10 @@
-import 'reflect-metadata';
-import { WebserverSetupService } from '@infra/webserver/webserver-setup.service';
-import { NestFactory } from '@nestjs/core';
-import { singleLineMessage } from '@common/errors/single-line-message';
+import { GlobalExceptionFilter } from '@common/errors/global-exception.filter';
 import { registerError } from '@common/errors/registry';
+import { singleLineMessage } from '@common/errors/single-line-message';
+import { WebserverSetupService } from '@infra/webserver/webserver-setup.service';
 import { Logger } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import 'reflect-metadata';
 import { AppModule } from './app.module';
 
 // TODO: remove this after testing
@@ -12,6 +13,11 @@ require('dotenv').config();
 (async () => {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // Setup global exception filter for critical errors
+  const globalExceptionFilter = app.get(GlobalExceptionFilter);
+  app.useGlobalFilters(globalExceptionFilter);
+
   await app.get(WebserverSetupService).setup(app);
 })();
 
