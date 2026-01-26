@@ -76,6 +76,10 @@ export class PaymentEntity {
   @Column({ name: 'error', type: 'text', nullable: true })
   error?: string;
 
+  /** Whether stuck payment notification was sent to user */
+  @Column({ name: 'stuck_notification_sent', type: 'boolean', default: false })
+  stuckNotificationSent: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   public readonly createdAt: Date;
 

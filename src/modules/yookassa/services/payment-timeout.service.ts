@@ -27,9 +27,6 @@ export class PaymentTimeoutService {
 
   private readonly TIMEOUT_MINUTES = 15;
 
-  // Track notifications to avoid duplicates (in-memory, resets on restart)
-  private readonly notifiedPayments = new Set<string>();
-
   constructor(
     @InjectEntityManager()
     private readonly em: EntityManager,
@@ -56,6 +53,7 @@ export class PaymentTimeoutService {
         // 1. Status is PENDING
         // 2. Created more than 15 minutes ago
         // 3. Don't have starsPurchaseId (webhook never arrived, purchase never started)
+        // 4. Notification not sent yet
         const pendingStuckPayments = await transactionalEm
           .createQueryBuilder(PaymentEntity, 'payment')
           .where('payment.status = :pendingStatus', {
@@ -63,6 +61,9 @@ export class PaymentTimeoutService {
           })
           .andWhere('payment.created_at < :timeoutDate', { timeoutDate })
           .andWhere('payment.stars_purchase_id IS NULL')
+          .andWhere('payment.stuck_notification_sent = :notSent', {
+            notSent: false,
+          })
           .getMany();
 
         // Case 2: Find payments that succeeded but purchase is stuck:
@@ -70,6 +71,7 @@ export class PaymentTimeoutService {
         // 2. Updated more than 15 minutes ago (when payment became SUCCEEDED)
         // 3. Have starsPurchaseId (purchase was started)
         // 4. Purchase status is not COMPLETED and not FAILED
+        // 5. Notification not sent yet
         const succeededStuckPayments = await transactionalEm
           .createQueryBuilder(PaymentEntity, 'payment')
           .innerJoin(
@@ -82,6 +84,9 @@ export class PaymentTimeoutService {
           })
           .andWhere('payment.updated_at < :timeoutDate', { timeoutDate })
           .andWhere('payment.stars_purchase_id IS NOT NULL')
+          .andWhere('payment.stuck_notification_sent = :notSent', {
+            notSent: false,
+          })
           .andWhere('purchase.status NOT IN (:...completedStatuses)', {
             completedStatuses: [
               StarsPurchaseStatus.COMPLETED,
@@ -123,7 +128,7 @@ export class PaymentTimeoutService {
    */
   private async checkPaymentStatus(payment: PaymentEntity): Promise<void> {
     try {
-      if (this.notifiedPayments.has(payment.id)) {
+      if (payment.stuckNotificationSent) {
         return;
       }
 
@@ -138,7 +143,6 @@ export class PaymentTimeoutService {
           payment,
           StuckPaymentReason.PENDING,
         );
-        this.notifiedPayments.add(payment.id);
         return;
       }
 
@@ -175,7 +179,6 @@ export class PaymentTimeoutService {
         payment,
         StuckPaymentReason.PROCESSING,
       );
-      this.notifiedPayments.add(payment.id);
     } catch (error) {
       this.logger.error(
         `Error checking payment ${payment.id} status: ${error instanceof Error ? error.message : String(error)}`,
@@ -204,6 +207,13 @@ export class PaymentTimeoutService {
       await this.telegraf.telegram.sendMessage(
         parseInt(payment.userId, 10),
         message,
+      );
+
+      // Mark notification as sent in database
+      await this.em.update(
+        PaymentEntity,
+        { id: payment.id },
+        { stuckNotificationSent: true },
       );
 
       this.logger.log(
