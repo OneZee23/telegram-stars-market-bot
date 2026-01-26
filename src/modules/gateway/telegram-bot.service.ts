@@ -22,7 +22,8 @@ import { ContextFactory } from './utils/context-factory.util';
 @Injectable()
 export class TelegramBotService
   extends EventEmitter
-  implements OnModuleInit, OnApplicationBootstrap {
+  implements OnModuleInit, OnApplicationBootstrap
+{
   constructor(
     private readonly config: TelegramBotConfig,
     private readonly telegraf: Telegraf,

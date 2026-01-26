@@ -13,9 +13,19 @@ export async function clearDatasource(
 
   for await (const entity of entities) {
     const repository = dataSource.getRepository(entity.name);
-    await dataSource.query(
-      `TRUNCATE TABLE "${repository.metadata.tableName}" CASCADE `,
-    );
+    try {
+      await dataSource.query(
+        `TRUNCATE TABLE "${repository.metadata.tableName}" CASCADE `,
+      );
+    } catch (error) {
+      // Ignore errors for tables that don't exist yet (before migration)
+      const isTableNotExist =
+        error instanceof Error &&
+        error.message.includes('does not exist');
+      if (!isTableNotExist) {
+        throw error;
+      }
+    }
   }
 
   if (userService) {

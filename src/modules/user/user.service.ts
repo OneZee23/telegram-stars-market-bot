@@ -13,7 +13,7 @@ export class UserService implements OnModuleInit {
   constructor(
     @InjectEntityManager()
     private readonly db: EntityManager,
-  ) { }
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.loadAllUsers();
