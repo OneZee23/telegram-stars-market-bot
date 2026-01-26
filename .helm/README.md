@@ -118,7 +118,7 @@ Current configuration in `values.yaml`:
 
 Ingress exposes the following paths:
 - `/telegram/webhook` - Telegram Bot webhooks
-- `/yookassa/webhook` - YooKassa payment webhooks
+- `/api/yookassa/webhook` - YooKassa payment webhooks
 
 TLS certificate is automatically issued by Let's Encrypt via cert-manager.
 
