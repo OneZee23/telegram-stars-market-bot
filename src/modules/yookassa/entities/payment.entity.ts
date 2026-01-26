@@ -19,9 +19,8 @@ export enum PaymentStatus {
 @Index(['userId'])
 @Index(['yooKassaPaymentId'])
 @Index(['starsPurchaseId'])
-// Composite indexes for payment timeout service queries
-@Index(['status', 'createdAt']) // For PENDING payments check
-@Index(['status', 'updatedAt']) // For SUCCEEDED payments check
+@Index(['status', 'createdAt'])
+@Index(['status', 'updatedAt'])
 export class PaymentEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

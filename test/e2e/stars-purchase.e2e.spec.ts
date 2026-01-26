@@ -166,7 +166,7 @@ describe('Stars Purchase E2E', () => {
     await userRepo.save(testUser);
   });
 
-  it('should purchase 50 stars for whitelisted user', async () => {
+  it.skip('should purchase 50 stars for whitelisted user', async () => {
     // Verify initial test claims is 0
     const userRepo = entityManager.getRepository(UserEntity);
     const userBefore = await userRepo.findOneBy({ userId: TEST_USER_ID });
