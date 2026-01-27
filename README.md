@@ -4,6 +4,12 @@
 
 **Status:** 🚧 MVP in Development | **Started:** Dec 19, 2025 | **Format:** Proof of Work
 
+**Current Status:** 
+- ✅ IP registered, bank account opened
+- ✅ All code ready, tests passing
+- ⏳ Awaiting payment gateway approval
+- 🎯 Ready for soft launch once payment gateway is connected
+
 ---
 
 ## TL;DR
@@ -32,11 +38,16 @@ Development follows a "Proof of Work" format: the entire process from idea to fi
 
 - **Cost basis:** ~0.67 ₽/⭐ (via Fragment, USDT → TON swap)
 - **Sale price:** ~0.79 ₽/⭐ for 50 stars (~20% markup)
+- **Market price (competitors):** 
+  - Плати.ру: 1.467 ₽/⭐ (~25% markup)
+  - Split.tg (СБП): 1.380 ₽/⭐ (~17% markup)
 - **User savings:** ~12-15% vs Apple/Google Play and competitors
+- **Net profit:** ~0.10 ₽/⭐ (at 20% markup, ~3% acquirer fee)
+- **Break-even:** ~100K Stars/month for profitability
 
 ### MVP Goal
 
-At least 1 real sale within 30 days from start (by Jan 18, 2026).
+At least 1 real sale after MVP launch. Currently awaiting payment gateway approval (Robokassa).
 
 ---
 
@@ -46,9 +57,11 @@ At least 1 real sale within 30 days from start (by Jan 18, 2026).
 Backend:     TypeScript, NestJS
 Database:    PostgreSQL, TypeORM
 Bot:         Telegram Bot API (Inline buttons)
-Payments:    YooKassa (SBP, cards)
-Crypto:      Fragment API, TON
-Infra:       Docker, Kubernetes, Helm, Timeweb Cloud
+Payments:    Robokassa (SBP, cards) - awaiting approval
+             YooKassa integration ready (rejected due to crypto proximity)
+Crypto:      Fragment API, TON, Ston.Fi (USDT → TON swap)
+Infra:       Docker, Kubernetes, Helm, Timeweb Cloud (migrated from Digital Ocean)
+Monitoring:  @fraggram_alerts (public Telegram channel)
 ```
 
 ---
@@ -207,19 +220,29 @@ Full project documentation is in [`docs/`](./docs/):
 - Proxy health tracking
 - Proxy expiration alerts
 
-### ✅ Payment Integration (YooKassa)
+### ✅ Payment Integration
 
-- YooKassa payment gateway integration
-- SBP and card payments
+- YooKassa payment gateway integration (ready, but rejected by YooKassa)
+- Robokassa integration (in progress, awaiting approval)
+- SBP and card payments support
 - Webhook handling for payment status updates
 - Payment entity tracking
-- Receipt generation
+- Receipt generation ready
 
 ### ✅ Monitoring
 
 - Public channel [@fraggram_alerts](https://t.me/fraggram_alerts) for alerts and stats
 - Logging of all purchases, errors, and important events
 - Real-time system transparency
+
+### ✅ Legal & Compliance
+
+- IP (Individual Entrepreneur) registered ✅
+- Bank account opened ✅
+- Terms of Service (ToS) and Privacy Policy added to bot
+- Roskomnadzor notification submitted (awaiting response)
+- Personal data consent request implemented
+- All legal documents accessible via bot menu
 
 ---
 
@@ -237,19 +260,36 @@ Full project documentation is in [`docs/`](./docs/):
   - [x] Whitelist system for testing
   - [x] User handling on interaction
   - [x] Interaction logging
-  - [x] USDT → TON swap via Ston.Fi
-  - [x] Monitoring via Telegram channel
+  - [x] USDT → TON swap via Ston.Fi (Omniston SDK)
+  - [x] Monitoring via Telegram channel (@fraggram_alerts)
   - [x] Proxy optimization with failover
   - [x] E2E tests for user flow
-  - [x] YooKassa payment integration
+  - [x] Payment gateway integration (YooKassa code ready, Robokassa in progress)
+  - [x] Legal documents (ToS, Privacy Policy)
+  - [x] Personal data consent handling
+  - [x] Domain setup (bot.onezee.ru)
+  - [x] Migration to Timeweb (Kubernetes, private registry)
+  - [x] CI/CD via GitHub Actions
+- [x] Business registration
+  - [x] IP registered (УСН "Доходы" 6%)
+  - [x] Bank account opened (Точка)
+  - [x] Roskomnadzor notification submitted
+  - [x] Legal documents prepared
 
 ### In Progress 🚧
 
-- [ ] Final pricing calculations and price list (100, 200 and more stars)
-- [ ] Business registration (IP)
-- [ ] Production payment gateway setup
-- [ ] Beta testing
+- [ ] Payment gateway approval (Robokassa - awaiting response)
+- [ ] Final pricing calculations and price list (100, 200, 500+ stars)
+- [ ] Production deployment with real payment gateway
+- [ ] Beta testing with whitelist users
 - [ ] MVP launch
+
+### Challenges & Learnings
+
+- **YooKassa rejection:** Rejected due to "security measures" - Telegram Stars too close to crypto
+- **Payment gateway search:** Trying Robokassa and other providers more lenient to digital goods
+- **Legal requirements:** More complex than expected - need ToS, Privacy Policy, Roskomnadzor notification
+- **Hosting migration:** Moved from Digital Ocean to Timeweb for Russian data storage compliance
 
 ---
 
@@ -281,5 +321,7 @@ MIT
 
 ## Links
 
-- [Telegram Channel](https://t.me/onezee_co) — daily progress
+- **Bot:** [@fraggram_bot](https://t.me/fraggram_bot) — Telegram Stars Shop
+- **Alerts Channel:** [@fraggram_alerts](https://t.me/fraggram_alerts) — public monitoring and stats
+- **Development Channel:** [@onezee_co](https://t.me/onezee_co) — daily progress updates
 - [YouTube](https://www.youtube.com/c/onezee) — final video will be here
