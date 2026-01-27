@@ -99,9 +99,10 @@ export class MessageManagementService {
     userId: string,
     text: string,
     keyboard?: TelegramKeyboard,
+    extra?: Partial<ExtraReplyMessage>,
   ): Promise<number | null> {
     await this.deleteMessage(ctx, userId);
-    return this.sendMessage(ctx, userId, text, keyboard);
+    return this.sendMessage(ctx, userId, text, keyboard, extra);
   }
 
   hasStoredMessage(userId: string): boolean {

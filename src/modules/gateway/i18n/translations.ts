@@ -148,9 +148,12 @@ export const translations: Record<string, Translations> = {
       payButton: '💳 Оплатить через ЮKassa',
       emailRequired:
         '📧 Для оплаты через ЮKassa требуется email адрес\n\n' +
-        'Пожалуйста, введите ваш email адрес:',
+        '**Введите ваш email адрес новым сообщением в чат:**\n\n' +
+        'Пример: example@mail.ru',
       invalidEmail:
-        '❌ Неверный email адрес. Пожалуйста, введите корректный email.',
+        '❌ Неверный email адрес.\n\n' +
+        '**Пожалуйста, введите корректный email новым сообщением в чат.**\n\n' +
+        'Пример: example@mail.ru',
       paymentCreated:
         '✅ Платеж создан!\n\n' +
         '✨ Количество: {amount} ⭐\n' +
@@ -196,7 +199,8 @@ export const translations: Record<string, Translations> = {
         'Данные хранятся в России и не передаются третьим лицам, кроме платёжной системы для проведения оплаты.',
       readMore: '📋 Подробнее',
       accept: '✅ Даю согласие',
-      accepted: '✅ Спасибо! Согласие на обработку персональных данных принято.',
+      accepted:
+        '✅ Спасибо! Согласие на обработку персональных данных принято.',
     },
     helpMenu: {
       title: '📄 Помощь',
@@ -359,15 +363,19 @@ export const translations: Record<string, Translations> = {
       payButton: '💳 Pay via YooKassa',
       emailRequired:
         '📧 Email address required for YooKassa payment\n\n' +
-        'Please enter your email address:',
-      invalidEmail: '❌ Invalid email address. Please enter a valid email.',
+        '**Please enter your email address as a message in the chat:**\n\n' +
+        'Example: example@mail.com',
+      invalidEmail:
+        '❌ Invalid email address.\n\n' +
+        '**Please enter a valid email as a message in the chat.**\n\n' +
+        'Example: example@mail.com',
       paymentCreated:
         '✅ Payment created!\n\n' +
         '✨ Amount: {amount} ⭐\n' +
         '💰 Price: {price}\n\n' +
         'Click the button below to proceed to payment.\n\n' +
         '———\n' +
-        '💡 If you paid but stars didn\'t arrive — contact us: @onezee123 (response within 24h).\n' +
+        "💡 If you paid but stars didn't arrive — contact us: @onezee123 (response within 24h).\n" +
         'If longer — write to @onezee\\_co group.',
       paymentSuccess:
         '✅ Payment received successfully!\n\n' +

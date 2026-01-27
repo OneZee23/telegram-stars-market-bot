@@ -44,7 +44,7 @@ export class CallbackQueryHandler {
     private readonly pricingConfig: PricingConfig,
     private readonly consentService: ConsentService,
     private readonly botCommandHandler: BotCommandHandler,
-  ) {}
+  ) { }
 
   async handleCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
     const userContext = await ContextExtractor.getUserContext(
@@ -195,7 +195,7 @@ export class CallbackQueryHandler {
     await this.messageManagementService.editMessage(
       ctx,
       userId,
-      t.consent.accepted + '\n\n' + t.mainMenu.title,
+      `${t.consent.accepted}\n\n${t.mainMenu.title}`,
       keyboard,
     );
   }
@@ -212,7 +212,10 @@ export class CallbackQueryHandler {
       [{ text: t.helpMenu.offer, callback_data: CallbackData.HELP_OFFER }],
       [{ text: t.helpMenu.privacy, callback_data: CallbackData.HELP_PRIVACY }],
       [
-        { text: t.helpMenu.contacts, callback_data: CallbackData.HELP_CONTACTS },
+        {
+          text: t.helpMenu.contacts,
+          callback_data: CallbackData.HELP_CONTACTS,
+        },
       ],
       [{ text: t.helpMenu.faq, callback_data: CallbackData.HELP_FAQ }],
       [{ text: t.helpMenu.revoke, callback_data: CallbackData.HELP_REVOKE }],
@@ -235,7 +238,10 @@ export class CallbackQueryHandler {
     userId: string,
     t: Translations,
   ): Promise<void> {
-    const text = t.helpMenu.offerText.replace('{offerUrl}', LEGAL_INFO.OFFER_URL);
+    const text = t.helpMenu.offerText.replace(
+      '{offerUrl}',
+      LEGAL_INFO.OFFER_URL,
+    );
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [{ text: t.helpMenu.back, callback_data: CallbackData.HELP_BACK }],
@@ -595,6 +601,7 @@ export class CallbackQueryHandler {
         userId,
         emailText,
         keyboard,
+        { parse_mode: 'Markdown' },
       );
       return;
     }
@@ -643,9 +650,8 @@ export class CallbackQueryHandler {
       : '';
 
     // Show payment button - сразу создаем платеж и показываем ссылку
-    const paymentText = `✨ Вы выбрали ${amount} ⭐\n\n${
-      formattedPrice ? `💰 Сумма к оплате: ${formattedPrice}\n\n` : ''
-    }Создаю платеж...`;
+    const paymentText = `✨ Вы выбрали ${amount} ⭐\n\n${formattedPrice ? `💰 Сумма к оплате: ${formattedPrice}\n\n` : ''
+      }Создаю платеж...`;
 
     await this.messageManagementService.editMessage(ctx, userId, paymentText);
 
@@ -761,12 +767,10 @@ export class CallbackQueryHandler {
       LEGAL_INFO.OFFER_URL,
     );
 
-    const paymentText =
-      t.buyStars.paymentCreated
-        .replace('{amount}', amount.toString())
-        .replace('{price}', formatPriceForButton(pricing.priceRub)) +
-      '\n\n' +
-      sellerInfo;
+    const paymentText = `${t.buyStars.paymentCreated
+      .replace('{amount}', amount.toString())
+      .replace('{price}', formatPriceForButton(pricing.priceRub))}\n\n${sellerInfo
+      }`;
 
     const keyboard = KeyboardBuilder.createInlineKeyboard([
       [

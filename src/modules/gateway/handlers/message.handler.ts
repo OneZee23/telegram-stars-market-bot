@@ -18,7 +18,7 @@ export class MessageHandler {
     private readonly whitelistService: WhitelistService,
     private readonly userService: UserService,
     private readonly callbackQueryHandler: CallbackQueryHandler,
-  ) {}
+  ) { }
 
   async handleTextMessage(ctx: Context, text: string): Promise<void> {
     const userContext = await ContextExtractor.getUserContext(
@@ -101,6 +101,8 @@ export class MessageHandler {
         ctx,
         userId,
         errorText,
+        undefined,
+        { parse_mode: 'Markdown' },
       );
       return;
     }
